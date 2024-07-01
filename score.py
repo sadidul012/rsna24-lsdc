@@ -80,3 +80,12 @@ def score(
     condition_losses.append(any_severe_spinal_loss)
     condition_weights.append(any_severe_scalar)
     return np.average(condition_losses, weights=condition_weights)
+
+
+if __name__ == '__main__':
+    rd = '/mnt/Cache/rsna-2024-lumbar-spine-degenerative-classification'
+    df = pd.read_csv(f'{rd}/train.csv')
+    df = df.iloc[:5]
+    print(df.to_string())
+
+    # s = score(df, df, "study_id", 1)

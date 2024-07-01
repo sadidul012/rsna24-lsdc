@@ -15,9 +15,9 @@ from transformers import get_cosine_schedule_with_warmup
 from sklearn.model_selection import KFold
 from torch.utils.tensorboard import SummaryWriter
 
-from dataset import RSNA24DatasetTrain, RSNA24DatasetInference
+from dataset import RSNA24DatasetTrain, RSNA24DatasetValid
 from model import RSNA24Model
-# from score import score
+from score import score
 
 
 # ResNet:
@@ -70,7 +70,7 @@ DEBUG = False
 
 PRETRAINED = True
 RETRAIN = False
-TRAIN = True
+TRAIN = False
 
 device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
 USE_AMP = True  # can change True if using T4 or newer than Ampere
@@ -146,7 +146,7 @@ def train(model_name):
             num_workers=N_WORKERS
         )
 
-        valid_ds = RSNA24DatasetInference(df_valid, train_des, image_dir, in_channel=IN_CHANS)
+        valid_ds = RSNA24DatasetValid(df_valid, train_des, image_dir, in_channel=IN_CHANS)
         valid_dl = DataLoader(
             valid_ds,
             batch_size=BATCH_SIZE * 2,
@@ -306,25 +306,42 @@ def train(model_name):
     return fold_score
 
 
+# def test_submission(model_name):
+#     from inference import prepare_submission
+#
+#     planes = ["Sagittal T2/STIR", "Sagittal T1", "Axial T2"]
+#     print(train_des.shape)
+#     for fold, (trn_idx, val_idx) in enumerate(skf.split(range(len(df)))):
+#         df_valid = df.iloc[val_idx]
+#         df_valid = df_valid.head()
+#         sub = prepare_submission(train_des.loc[train_des.study_id.isin(list(df_valid.study_id))], model_name, image_dir)
+#         print(sub.head())
+#         print(sub.shape)
+#         s = score(df_valid, sub, "row_id", 1)
+#         print(s)
+#         break
+#
+#     return 0
+
+
 def test(model_name):
     y_preds = []
     labels = []
     weights = torch.tensor([1.0, 2.0, 4.0])
     criterion2 = nn.CrossEntropyLoss(weight=weights)
     fold_scores = []
+    planes = ["Sagittal T2/STIR", "Sagittal T1", "Axial T2"]
 
     for fold, (trn_idx, val_idx) in enumerate(skf.split(range(len(df)))):
         df_valid = df.iloc[val_idx]
-        # print(df.head().to_string())
-        valid_ds = RSNA24DatasetInference(df_valid, train_des, image_dir, in_channel=IN_CHANS)
-        valid_dl = DataLoader(
-            valid_ds,
-            batch_size=1,
-            shuffle=False,
-            pin_memory=True,
-            drop_last=False,
-            num_workers=N_WORKERS
-        )
+
+        dataset_sagittal_t2 = RSNA24DatasetValid(df_valid, train_des, image_dir, plane="Sagittal T2/STIR", in_channel=IN_CHANS)
+        dataset_sagittal_t1 = RSNA24DatasetValid(df_valid, train_des, image_dir, plane="Sagittal T1", in_channel=IN_CHANS)
+        dataset_axial_t2 = RSNA24DatasetValid(df_valid, train_des, image_dir, plane="Axial T2", in_channel=IN_CHANS)
+
+        dl_sagittal_t2 = DataLoader(dataset_sagittal_t2, batch_size=1, shuffle=False, num_workers=int(N_WORKERS/3), pin_memory=False, drop_last=False)
+        dl_sagittal_t1 = DataLoader(dataset_sagittal_t1, batch_size=1, shuffle=False, num_workers=int(N_WORKERS/3), pin_memory=False, drop_last=False)
+        dl_axial_t2 = DataLoader(dataset_axial_t2, batch_size=1, shuffle=False, num_workers=int(N_WORKERS/3), pin_memory=False, drop_last=False)
 
         model = RSNA24Model(model_name, IN_CHANS, N_CLASSES, pretrained=False)
         fname = f'{OUTPUT_DIR}/best_wll_model_fold-{fold}.pt'
@@ -334,27 +351,36 @@ def test(model_name):
         model.eval()
         fold_preds = []
         fold_labels = []
-        with tqdm(valid_dl, leave=True, desc=f"Test Fold {fold}") as pbar:
+
+        with tqdm(total=len(dataset_axial_t2), leave=True, desc=f"Test Fold {fold}") as pbar:
             with torch.no_grad():
-                for idx, (x, t) in enumerate(pbar):
+                for idx, data in enumerate(zip(dl_sagittal_t2, dl_sagittal_t1, dl_axial_t2)):
+                    (st2_x, st2_t), (st1_x, st1_t), (at2_x, at2_t) = data
+                    x = torch.concatenate((st2_x, st1_x, at2_x))
                     x = x.to(device).type(torch.float32)
+                    t = torch.concatenate((st2_t, st1_t, at2_t))
+                    t, _ = torch.max(t, dim=0)
+                    t = t.unsqueeze(0)
                     t = t.to(device)
 
                     with autocast:
                         y = model(x)
+                        y, _ = torch.max(y, dim=0)
+                        y = y.unsqueeze(0)
+
                         for col in range(N_LABELS):
                             pred = y[:, col * 3:col * 3 + 3]
                             gt = t[:, col]
-                            y_pred = pred.float()
+                            y_pred = pred.float().softmax(0)
                             fold_preds.append(y_pred.cpu())
                             fold_labels.append(gt.cpu())
                             y_preds.append(y_pred.cpu())
                             labels.append(gt.cpu())
 
+                    pbar.update()
+
         fold_preds = torch.cat(fold_preds)
         fold_labels = torch.cat(fold_labels)
-        # print(fold_preds)
-        # print(fold_labels)
 
         fold = criterion2(fold_preds, fold_labels)
         fold_scores.append(fold.item())
@@ -382,4 +408,4 @@ if __name__ == '__main__':
         train(MODEL_NAME)
 
     r = test(MODEL_NAME)
-    row = [MODEL_NAME] + r
+    # row = [MODEL_NAME] + r

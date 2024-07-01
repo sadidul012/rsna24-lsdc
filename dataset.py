@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 from glob import glob
 import matplotlib.pyplot as plt
+import torch
 import tqdm
 from torch.utils.data import Dataset
 import albumentations as A
@@ -50,7 +51,7 @@ def load_dicom_stack(dicom_folder, plane, reverse_sort=False):
         }
 
 
-class RSNA24DatasetInference(Dataset):
+class RSNA24DatasetValid(Dataset):
     def __init__(self, df, train_des, image_dir, plane=None, in_channel=30, image_size=(512, 512), split="valid", use_cache=True):
         self.df = df
         self.train_des = train_des
@@ -146,22 +147,24 @@ class RSNA24DatasetInference(Dataset):
         self.save_instance(data_, idx)
         return data_
 
+    def get_plane(self):
+        return self.plane
+
     def __getitem__(self, idx):
         t = self.df.iloc[idx]
-        plane = random.choice(self.plane_names)
-        self.plane = plane
-
+        self.plane = self.get_plane()
         y = t[1:].values.astype(np.int64)
         label = np.zeros(25, dtype=np.int64)
-        label[self.label_indexes[plane][0]:self.label_indexes[plane][1]] = y[self.label_indexes[plane][0]:self.label_indexes[plane][1]]
+        label[self.label_indexes[self.plane][0]:self.label_indexes[self.plane][1]] = y[self.label_indexes[self.plane][0]:self.label_indexes[self.plane][1]]
         st_id = int(t['study_id'])
         study = self.train_des.loc[self.train_des.study_id == st_id]
+
         data_ = self.read_data(study, idx)
-        feat = self.process(data_[plane], self.in_channel)
+        feat = self.process(data_[self.plane], self.in_channel)
         return feat, label
 
 
-class RSNA24DatasetTrain(RSNA24DatasetInference):
+class RSNA24DatasetTrain(RSNA24DatasetValid):
     def __init__(self, df, train_des, image_dir, plane=None, in_channel=30, aug_prob=0.75, image_size=(512, 512), use_cache=True):
         super().__init__(df, train_des, image_dir, plane=plane, in_channel=in_channel, image_size=image_size, split="train", use_cache=use_cache)
         self.transform = A.Compose([
@@ -185,6 +188,9 @@ class RSNA24DatasetTrain(RSNA24DatasetInference):
             A.Normalize(mean=0.5, std=0.5)
         ])
 
+    def get_plane(self):
+        return random.choice(self.plane_names)
+
 
 def main():
     # from PIL import Image
@@ -194,10 +200,14 @@ def main():
     train_des = pd.read_csv(f'{rd}/train_series_descriptions.csv')
     image_dir = f"{rd}/train_images/"
     use_cache = True
-
-    dataset = RSNA24DatasetInference(df, train_des, image_dir, use_cache=use_cache, in_channel=5)
+    {"Sagittal T2/STIR": "sagittal", "Sagittal T1": "sagittal", "Axial T2": "axial"}
+    sagittal_t2 = RSNA24DatasetValid(df, train_des, image_dir, plane="Sagittal T2/STIR", use_cache=use_cache, in_channel=5)
+    sagittal_t1 = RSNA24DatasetValid(df, train_des, image_dir, plane="Sagittal T1", use_cache=use_cache, in_channel=5)
+    axial = RSNA24DatasetValid(df, train_des, image_dir, plane="Axial T2", use_cache=use_cache, in_channel=5)
+    dataset = torch.utils.data.ConcatDataset([sagittal_t2, sagittal_t1, axial])
     for i in tqdm.tqdm(range(len(dataset)), leave=True):
         x, label = dataset.__getitem__(i)
+        print(label)
         # print(x.shape)
 
     dataset = RSNA24DatasetTrain(df, train_des, image_dir, use_cache=use_cache, in_channel=5)

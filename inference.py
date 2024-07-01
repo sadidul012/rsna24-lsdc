@@ -20,8 +20,8 @@ import cv2
 # TODO Submit retrained models to check progress
 
 rd = '/mnt/Cache/rsna-2024-lumbar-spine-degenerative-classification'
-OUTPUT_DIR = f'rsna24-data/rsna24-new-densenet201-5'
-MODEL_NAME = "densenet201"
+OUTPUT_DIR = f'rsna24-data/rsna24-new-timm/tf_efficientnet_b7.ra_in1k-5'
+MODEL_NAME = "timm/tf_efficientnet_b7.ra_in1k"
 
 N_WORKERS = os.cpu_count()
 USE_AMP = True
@@ -36,8 +36,6 @@ N_CLASSES = 3 * N_LABELS
 BATCH_SIZE = 1
 device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
 
-df = pd.read_csv(f'{rd}/test_series_descriptions.csv')
-study_ids = list(df['study_id'].unique())
 sample_sub = pd.read_csv(f'{rd}/sample_submission.csv')
 LABELS = list(sample_sub.columns[1:])
 CONDITIONS = [
@@ -97,7 +95,7 @@ def load_dicom_stack(dicom_folder, plane, reverse_sort=False):
 
 
 class RSNA24DatasetInference(Dataset):
-    def __init__(self, df, image_dir, in_channel=30, image_size=(512, 512), split="valid"):
+    def __init__(self, df, image_dir, plane=None, in_channel=30, image_size=(512, 512), split="valid"):
         self.df = df
         self.study_ids = list(df['study_id'].unique())
         self.image_dir = image_dir
@@ -105,6 +103,13 @@ class RSNA24DatasetInference(Dataset):
         self.in_channel = in_channel
         self.split = split
         self.planes = {"Sagittal T2/STIR": "sagittal", "Sagittal T1": "sagittal", "Axial T2": "axial"}
+        self.plane_names = list(self.planes.keys())
+        self.label_indexes = {
+            "Sagittal T2/STIR": [0, 5],
+            "Sagittal T1": [5, 15],
+            "Axial T2": [15, 25]
+        }
+        self.plane = plane
 
         self.df = self.df.fillna(-100)
         self.label2id = {'Normal/Mild': 0, 'Moderate': 1, 'Severe': 2}
@@ -118,48 +123,21 @@ class RSNA24DatasetInference(Dataset):
     def __len__(self):
         return len(self.study_ids)
 
-    def process(self, data, return_length, offset=0, axial=False):
-        meta_height = int(self.image_size[0] / (self.in_channel - 1) * return_length)
-
+    def process(self, data, return_length):
         if data is None:
-            return np.zeros((return_length, self.image_size[0], self.image_size[1])), np.zeros(
-                (meta_height, self.image_size[1]))
+            return np.zeros((return_length, self.image_size[0], self.image_size[1]))
 
-        if axial:
-            step = len(data["array"]) / return_length
-            st = 0
-            end = len(data["array"])
-            images = []
-            positions = []
-            for j, i in enumerate(list(np.arange(st, end, step))):
-                ind = max(0, int((i - 0.5001).round()))
-                images.append(data["array"][ind])
-                positions.append(data["positions"][ind])
-            images = np.array(images)[:return_length]
-            positions = np.array(positions)[:return_length]
+        step = len(data["array"]) / return_length
+        st = 0
+        end = len(data["array"])
+        images = []
+        positions = []
+        for j, i in enumerate(list(np.arange(st, end, step))):
+            ind = max(0, int((i - 0.5001).round()))
+            images.append(data["array"][ind])
+            positions.append(data["positions"][ind])
 
-        else:
-            middle = len(data["array"]) // 2
-            start = min(middle - offset - (return_length // 2), len(data["array"]) - return_length)
-            start = start if start >= 0 else 0
-            end = min(middle - offset + (return_length // 2), len(data["array"]))
-            if return_length % 2 != 0:
-                end += 1
-
-            images = data["array"][start:end]
-            positions = data["positions"][start:end]
-
-        pixel_spacing = data["pixel_spacing"].reshape(-1, 2)
-        pixel_spacing = np.pad(pixel_spacing, ((0, 0), (0, 1)), mode="constant", constant_values=0)
-        positions = np.concatenate((positions, pixel_spacing))
-        meta_data = (
-            np.pad(
-                positions,
-                ((abs(positions.shape[0] - meta_height), 0), (0, abs(positions.shape[1] - self.image_size[1]))),
-                mode='constant', constant_values=0
-            )
-        )
-
+        images = np.array(images)[:return_length]
         images = images.transpose(2, 1, 0)
         if self.transform is not None:
             images = self.transform(image=images)['image']
@@ -169,13 +147,10 @@ class RSNA24DatasetInference(Dataset):
             images = np.pad(
                 images, ((abs(images.shape[0] - return_length), 0), (0, 0), (0, 0)), mode='constant', constant_values=0
             )
-        return images, meta_data
+        return images
 
-    def __getitem__(self, idx):
-        st_id = self.study_ids[idx]
-        study = self.df.loc[self.df.study_id == st_id]
+    def read_data(self, study):
         data_ = dict(zip(self.planes.keys(), [None for _ in self.planes.keys()]))
-
         for row in study.itertuples():
             d = load_dicom_stack(
                 os.path.join(self.image_dir, str(row.study_id), str(row.series_id)),
@@ -190,27 +165,17 @@ class RSNA24DatasetInference(Dataset):
                     "pixel_spacing": np.concatenate(
                         (data_[row.series_description]["pixel_spacing"], d["pixel_spacing"])),
                 }
-        sag_t1_images, sag_t1_meta = self.process(data_["Sagittal T1"], 10, 1)
-        sag_t2_images, sag_t2_meta = self.process(data_["Sagittal T2/STIR"], 9, -4)
-        ax_t2_images, ax_t2_meta = self.process(data_["Axial T2"], 10, axial=True)
-        meta = np.concatenate((sag_t1_meta, sag_t2_meta, ax_t2_meta), axis=0)
-        meta = np.pad(
-            meta,
-            ((abs(meta.shape[0] - self.image_size[0]), 0), (0, 0)), mode='constant', constant_values=0
-        )
-        x = np.concatenate((sag_t1_images, sag_t2_images, ax_t2_images, [meta]), axis=0)
-        return x, str(st_id)
+        return data_
 
+    def get_plane(self):
+        return self.plane
 
-test_ds = RSNA24DatasetInference(df, f"{rd}/test_images/")
-test_dl = DataLoader(
-    test_ds,
-    batch_size=1,
-    shuffle=False,
-    num_workers=N_WORKERS,
-    pin_memory=True,
-    drop_last=False
-)
+    def __getitem__(self, idx):
+        st_id = self.study_ids[idx]
+        study = self.df.loc[self.df.study_id == st_id]
+        data_ = self.read_data(study)
+        feat = self.process(data_[self.plane], self.in_channel)
+        return feat, str(st_id)
 
 
 class RSNA24Model(nn.Module):
@@ -230,54 +195,76 @@ class RSNA24Model(nn.Module):
         return y
 
 
-models = []
-CKPT_PATHS = glob(OUTPUT_DIR + '/best_wll_model_fold-*.pt')
-CKPT_PATHS = sorted(CKPT_PATHS)
-for _, cp in enumerate(CKPT_PATHS):
-    print(f'loading {cp}...')
-    model = RSNA24Model(MODEL_NAME, IN_CHANS, N_CLASSES, pretrained=False)
-    model.load_state_dict(torch.load(cp))
-    model.eval()
-    model.half()
-    model.to(device)
-    models.append(model)
-
 autocast = torch.cuda.amp.autocast(enabled=USE_AMP, dtype=torch.half)
-y_preds = []
-row_names = []
 
-with tqdm.tqdm(test_dl, leave=True) as pbar:
-    with torch.no_grad():
-        for idx, (x, si) in enumerate(pbar):
-            x = x.to(device).type(torch.float32)
-            pred_per_study = np.zeros((25, 3))
 
-            for cond in CONDITIONS:
-                for level in LEVELS:
-                    row_names.append(si[0] + '_' + cond + '_' + level)
+def prepare_submission(dataset, model_name, image_dir):
+    models = []
+    CKPT_PATHS = glob(OUTPUT_DIR + '/best_wll_model_fold-*.pt')
+    CKPT_PATHS = sorted(CKPT_PATHS)
+    for _, cp in enumerate(CKPT_PATHS):
+        print(f'loading {cp}...')
+        model = RSNA24Model(model_name, IN_CHANS, N_CLASSES, pretrained=False)
+        model.load_state_dict(torch.load(cp))
+        model.eval()
+        model.half()
+        model.to(device)
+        models.append(model)
 
-            with autocast:
-                for m in models:
-                    y = m(x)[0]
-                    for col in range(N_LABELS):
-                        pred = y[col * 3:col * 3 + 3]
-                        y_pred = pred.float().softmax(0).cpu().numpy()
-                        pred_per_study[col] += y_pred / len(models)
+    dataset_sagittal_t2 = RSNA24DatasetInference(dataset, image_dir, "Sagittal T2/STIR")
+    dataset_sagittal_t1 = RSNA24DatasetInference(dataset, image_dir, "Sagittal T1")
+    dataset_axial_t2 = RSNA24DatasetInference(dataset, image_dir, "Axial T2")
 
-                y_preds.append(pred_per_study)
+    dl_sagittal_t2 = DataLoader(dataset_sagittal_t2, batch_size=1, shuffle=False, num_workers=N_WORKERS, pin_memory=False, drop_last=False)
+    dl_sagittal_t1 = DataLoader(dataset_sagittal_t1, batch_size=1, shuffle=False, num_workers=N_WORKERS, pin_memory=False, drop_last=False)
+    dl_axial_t2 = DataLoader(dataset_axial_t2, batch_size=1, shuffle=False, num_workers=N_WORKERS, pin_memory=False, drop_last=False)
 
-                # one hot output
-                # y_hat = np.zeros(pred_per_study.shape)
-                # ys = pred_per_study.argmax(axis=1)
-                # for i, y in enumerate(ys):
-                #     y_hat[i][y] = 1
-                # y_preds.append(y_hat)
+    y_preds = []
+    row_names = []
+    with tqdm.tqdm(total=len(dataset_axial_t2), leave=True) as pbar:
+        with torch.no_grad():
+            for idx, data in enumerate(zip(dl_sagittal_t2, dl_sagittal_t1, dl_axial_t2)):
+                (st2_x, st2_si), (st1_x, st1_si), (at2_x, at2_si) = data
+                x = torch.concatenate((st2_x, st1_x, at2_x))
+                x = x.to(device).type(torch.float32)
+                pred_per_study = np.zeros((25, 3))
 
-y_preds = np.concatenate(y_preds, axis=0)
-sub = pd.DataFrame()
-sub['row_id'] = row_names
-sub[LABELS] = y_preds
-print(sub.shape)
-sub.to_csv('submission.csv', index=False)
+                for cond in CONDITIONS:
+                    for level in LEVELS:
+                        row_names.append(st1_si[0] + '_' + cond + '_' + level)
 
-print(pd.read_csv('submission.csv').head().to_string())
+                with autocast:
+                    for m in models:
+                        y = m(x)
+
+                        y, _ = torch.max(y, dim=0)
+                        for col in range(N_LABELS):
+                            pred = y[col * 3:col * 3 + 3]
+                            y_pred = pred.float().softmax(0).cpu().numpy()
+                            pred_per_study[col] += y_pred / len(models)
+
+                    y_preds.append(pred_per_study)
+
+                    # one hot output
+                    # y_hat = np.zeros(pred_per_study.shape)
+                    # ys = pred_per_study.argmax(axis=1)
+                    # for i, y in enumerate(ys):
+                    #     y_hat[i][y] = 1
+                    # y_preds.append(y_hat)
+                pbar.update()
+                del x
+
+    y_preds = np.concatenate(y_preds, axis=0)
+    sub = pd.DataFrame()
+    sub['row_id'] = row_names
+    sub[LABELS] = y_preds
+    return sub
+
+
+if __name__ == '__main__':
+    df = pd.read_csv(f'{rd}/test_series_descriptions.csv')
+    submission = prepare_submission(df, MODEL_NAME, f"{rd}/test_images/")
+    print(submission.shape)
+    submission.to_csv('submission.csv', index=False)
+
+    print(pd.read_csv('submission.csv').to_string())
