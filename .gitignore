@@ -1,0 +1,6 @@
+cvt_png
+rsna24*
+submission*
+.idea
+**/__pycache__/**
+data
