@@ -1,6 +1,8 @@
 import math
+import warnings
 
 import torch
+from pandas.errors import SettingWithCopyWarning
 from torch import nn
 from torch.utils.data import DataLoader
 import timm
@@ -13,13 +15,11 @@ import tqdm
 from torch.utils.data import Dataset
 import albumentations as A
 import pydicom
-import cv2
 
-# Done: Submit 2 best models to see the actual position of the competition
-#   DenseNet-201: ~20 million parameters - 0.66 - 0.70 - 0.63 - 0.70 - 0.62 - 0.75
-#   MobileNetV3 Large: ~5.4 million parameters
-#       mobilenetv3_large_100 - 0.74 - 0.77
-# TODO Submit retrained models to check progress
+# TODO Submit trained models to check progress
+
+warnings.filterwarnings("ignore", category=SettingWithCopyWarning)
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 rd = '/mnt/Cache/rsna-2024-lumbar-spine-degenerative-classification'
 OUTPUT_DIR = f'rsna24-data/rsna24-3-efficientnet_b2-5'
@@ -80,23 +80,6 @@ class RSNA24DatasetInference(Dataset):
 
     def __getitem__(self, idx):
         x = self.df.iloc[idx]
-        # label_size = 0
-        # # if x.series_description == "Sagittal T2/STIR":
-        # #     # Spinal Canal Stenosis
-        # #     # [l1/l2, l2/l3, l3/l4, l4/l5, l5/s1] * [Normal/Mild, Moderate, Severe]
-        # #     label_size = 15
-        # # if x.series_description == "Sagittal T1":
-        # #     # Neural Foraminal Narrowing
-        # #     # [left, right] * [l1/l2, l2/l3, l3/l4, l4/l5, l5/s1] * [Normal/Mild, Moderate, Severe]
-        # #     label_size = 30
-        # # if x.series_description == "Axial T2":
-        # #     # Neural Foraminal Narrowing
-        # #     # [left, right] * [Normal/Mild, Moderate, Severe]
-        # #     label_size = 6
-        # #
-        # # label = np.zeros(label_size)
-        # # for full_label in x[self.label]:
-        # #     label[full_label] = 1
         image = load_dicom(f"{self.image_dir}/{x["study_id"]}/{x["series_id"]}/{x["instance_number"]}.dcm")
         if self.transform:
             image = self.transform(image=image)["image"]
@@ -145,14 +128,64 @@ def get_model_output(data, path, n_classes, image_dir):
                     y = y.cpu().numpy()
                     y_preds.append(y)
 
+                pbar.update()
+
     y_preds = np.concatenate(y_preds, axis=0)
     data["preds"] = y_preds.tolist()
-
     return data
 
 
+plane_conditions = {
+    "Sagittal T2/STIR": ["spinal_canal_stenosis"],
+    "Sagittal T1": ["left_neural_foraminal_narrowing", "right_neural_foraminal_narrowing"],
+    "Axial T2": ["left_subarticular_stenosis", "right_subarticular_stenosis"]
+}
+levels = ["l1_l2", "l2_l3", "l3_l4", "l4_l5", "l5_s1"]
+row_names = {
+    "Sagittal T2/STIR": [],
+    "Sagittal T1": [],
+    "Axial T2": []
+}
+for k in plane_conditions:
+    for p in plane_conditions[k]:
+        for label in levels:
+            row_names[k].append(f"{p}_{label}")
+
+labels = ["row_id", "normal_mild", "moderate", "severe"]
+
+
+def apply(x):
+    preds = []
+    if x.iloc[0].series_description == "Sagittal T2/STIR":
+        preds = np.array([np.array(y) for y in x["preds"].values]).mean(0)
+
+    if x.iloc[0].series_description == "Sagittal T1":
+        preds = np.array([np.array(y) for y in x["preds"].values]).mean(0)
+
+    if x.iloc[0].series_description == "Axial T2":
+        x['instance_number'] = x['instance_number'].astype('int32')
+        x = x.sort_values(by=["instance_number"])
+        step = math.floor(x.shape[0]/5)
+        left = []
+        right = []
+        for i in range(0, 5):
+            y = x.iloc[i*step:(i * step)+step]
+            preds = np.array([np.array(z) for z in y["preds"].values]).mean(0)
+            left.append(preds[0])
+            right.append(preds[1])
+
+        preds = np.array(left + right)
+
+    result = []
+    for level, pred in zip(row_names[x.iloc[0].series_description], preds):
+        result.append([f"{x.iloc[0]["study_id"]}_{level}"] + list(pred))
+    result = pd.DataFrame(result, columns=labels)
+
+    return result
+
+
 def prepare_submission(dataset, model_name, image_dir):
-    sub = None
+    sub = dataset
     dataset["instance_number"] = dataset.apply(lambda x: [
         os.path.splitext(os.path.basename(d))[0] for d in glob(f"{image_dir}/{x["study_id"]}/{x["series_id"]}/*.dcm")
     ], axis=1)
@@ -164,25 +197,25 @@ def prepare_submission(dataset, model_name, image_dir):
         15,
         image_dir
     )
+    sagittal_t2 = sagittal_t2.groupby(by=["study_id", "series_id"]).apply(lambda x: apply(x)).reset_index(drop=True)
+
     sagittal_t1 = get_model_output(
         dataset.loc[dataset.series_description == "Sagittal T1"],
         OUTPUT_DIR + '/sagittal_t1-best_wll_model_fold-0.pt',
         30,
         image_dir
     )
+    sagittal_t1 = sagittal_t1.groupby(by=["study_id", "series_id"]).apply(lambda x: apply(x)).reset_index(drop=True)
+
     axial_t2 = get_model_output(
         dataset.loc[dataset.series_description == "Axial T2"],
         OUTPUT_DIR + '/axial_t2-best_wll_model_fold-0.pt',
         6,
         image_dir
     )
-    print(sagittal_t2.head().to_string())
-    print(sagittal_t1.head().to_string())
-    print(axial_t2.head().to_string())
-
-    # sub = pd.DataFrame()
-    # sub['row_id'] = row_names
-    # sub[LABELS] = y_preds
+    axial_t2 = axial_t2.groupby(by=["study_id", "series_id"]).apply(lambda x: apply(x)).reset_index(drop=True)
+    sub = pd.concat([sagittal_t2, sagittal_t1, axial_t2])
+    # sub = sub.sort_values(by="row_id")
     return sub
 
 
