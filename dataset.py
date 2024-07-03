@@ -14,6 +14,10 @@ import pickle
 import cv2
 
 
+# TODO OneHot output
+# TODO Balanced dataset
+
+
 def convert_to_8bit(x):
     lower, upper = np.percentile(x, (1, 99))
     x = np.clip(x, lower, upper)
@@ -207,7 +211,6 @@ def main():
     dataset = torch.utils.data.ConcatDataset([sagittal_t2, sagittal_t1, axial])
     for i in tqdm.tqdm(range(len(dataset)), leave=True):
         x, label = dataset.__getitem__(i)
-        print(label)
         # print(x.shape)
 
     dataset = RSNA24DatasetTrain(df, train_des, image_dir, use_cache=use_cache, in_channel=5)
