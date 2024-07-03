@@ -3,7 +3,7 @@ from torch import nn
 
 
 class RSNA24Model(nn.Module):
-    def __init__(self, model_name, in_c=30, n_classes=75, pretrained=True, features_only=False):
+    def __init__(self, model_name, in_c=3, n_classes=30, pretrained=True, features_only=False):
         super().__init__()
         self.model = timm.create_model(
             model_name,

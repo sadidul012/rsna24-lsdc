@@ -103,26 +103,27 @@ def validation_transform(height, width):
 
 def train_transform(height, width, aug_prob=0.75):
     return A.Compose([
-            A.RandomBrightnessContrast(brightness_limit=(-0.2, 0.2), contrast_limit=(-0.2, 0.2), p=aug_prob),
-            A.OneOf([
-                A.MotionBlur(blur_limit=5),
-                A.MedianBlur(blur_limit=5),
-                A.GaussianBlur(blur_limit=5),
-                A.GaussNoise(var_limit=(5.0, 30.0)),
-            ], p=aug_prob),
+        A.Resize(140, 140),
+        A.RandomBrightnessContrast(brightness_limit=(-0.2, 0.2), contrast_limit=(-0.2, 0.2), p=aug_prob),
+        A.OneOf([
+            A.MotionBlur(blur_limit=5),
+            A.MedianBlur(blur_limit=5),
+            A.GaussianBlur(blur_limit=5),
+            A.GaussNoise(var_limit=(5.0, 30.0)),
+        ], p=aug_prob),
 
-            A.OneOf([
-                A.OpticalDistortion(distort_limit=1.0),
-                A.GridDistortion(num_steps=5, distort_limit=1.),
-                A.ElasticTransform(alpha=3),
-            ], p=aug_prob),
+        A.OneOf([
+            A.OpticalDistortion(distort_limit=1.0),
+            A.GridDistortion(num_steps=5, distort_limit=1.),
+            A.ElasticTransform(alpha=3),
+        ], p=aug_prob),
 
-            A.ShiftScaleRotate(shift_limit=0.1, scale_limit=0.1, rotate_limit=0.01, border_mode=0, p=aug_prob),
-            A.Resize(height, width),
-            A.CoarseDropout(max_holes=16, max_height=64, max_width=64, min_holes=1, min_height=8, min_width=8, p=aug_prob),
-            A.Normalize(mean=0.5, std=0.5),
-            A.ToRGB()
-        ])
+        A.ShiftScaleRotate(shift_limit=0.1, scale_limit=0.1, rotate_limit=0.01, border_mode=0, p=aug_prob),
+        A.Resize(height, width),
+        A.CoarseDropout(max_holes=16, max_height=64, max_width=64, min_holes=1, min_height=8, min_width=8, p=aug_prob),
+        A.Normalize(mean=0.5, std=0.5),
+        A.ToRGB()
+    ])
 
 
 def process_train_csv(train):
@@ -240,13 +241,14 @@ class RSNA24DatasetBase(Dataset):
         label = np.zeros(label_size)
         for full_label in x[self.label]:
             label[full_label] = 1
-        label = label.reshape(-1, 3)
+
+        # label = label.reshape(-1, 3)
         image = self.read_image(x)
 
         if self.transform:
             image = self.transform(image=image)["image"]
             image = image.transpose(2, 0, 1).astype(np.float32)
-        return image, label
+        return image, label.astype(np.float32)
 
 
 if __name__ == '__main__':
@@ -257,17 +259,24 @@ if __name__ == '__main__':
 
     _sagittal_t2, _sagittal_t1, _axial_t2 = process_train_csv(_train)
     print("_sagittal_t2", _sagittal_t2.shape)
-    print("_sagittal_t1", _sagittal_t1.shape)
-    print("_axial_t2", _axial_t2.shape)
 
-    dataset = RSNA24DatasetBase(_sagittal_t2, transform=validation_transform(512, 512))
+    # dataset = RSNA24DatasetBase(_sagittal_t2, transform=validation_transform(512, 512))
+    # for i in tqdm.tqdm(range(len(dataset))):
+    #     _x, _label = dataset.__getitem__(i)
+    #     print(_x.shape, _label.shape)
+    #     break
+    #
+    # print("_sagittal_t1", _sagittal_t1.shape)
+    #
+    # dataset = RSNA24DatasetBase(_sagittal_t1, transform=validation_transform(512, 512))
+    # for i in tqdm.tqdm(range(len(dataset))):
+    #     _x, _label = dataset.__getitem__(i)
+    #     print(_x.shape, _label.shape)
+    #     break
+
+    print("_axial_t2", _axial_t2.shape)
+    dataset = RSNA24DatasetBase(_axial_t2, transform=train_transform(512, 512))
     for i in tqdm.tqdm(range(len(dataset))):
         _x, _label = dataset.__getitem__(i)
-
-    # dataset = RSNA24DatasetOneSide(balanced.loc[balanced["plane"] == "Sagittal T1"], transform=validation_transform(512, 512))
-    # for i in tqdm.tqdm(range(len(dataset))):
-    #     _x, _label = dataset.__getitem__(i)
-    #
-    # dataset = RSNA24DatasetOneSide(balanced.loc[balanced["plane"] == "Axial T2"], transform=train_transform(512, 512))
-    # for i in tqdm.tqdm(range(len(dataset))):
-    #     _x, _label = dataset.__getitem__(i)
+        # print(_x.shape, _label.shape)
+        # break
