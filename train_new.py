@@ -111,7 +111,7 @@ def train(df, plane, n_classes):
         best_loss = 12
         best_wll = 12
         es_step = 0
-        log_dir = "rsna24-data/logs" + f"/{MODEL_NAME}/{plane}-Fold-{fold}/{N_FOLDS}"
+        log_dir = "rsna24-data/logs" + f"/{MODEL_NAME}/Fold-{fold}/{N_FOLDS}"
 
         if os.path.exists(log_dir):
             log_dir = log_dir + f"+1"
@@ -156,7 +156,7 @@ def train(df, plane, n_classes):
 
                 train_loss = total_loss / len(train_dl)
                 print(f"train loss {train_loss:.6f}")
-                writer.add_scalar(f'Train/train_loss', train_loss, epoch)
+                writer.add_scalar(f'{plane.upper()}/Train/train_loss', train_loss, epoch)
 
             total_loss = 0
             y_preds = []
@@ -215,10 +215,10 @@ def train(df, plane, n_classes):
                 if old_wll_metric > best_wll:
                     print("wll_metric" + f'{old_wll_metric: .6f}', "->" + f'{best_wll: .6f}')
 
-                writer.add_scalar(f'Valid/val_loss', val_loss, epoch)
-                writer.add_scalar(f'Valid/val_wll', val_wll, epoch)
-                writer.add_scalar(f'Valid/best_loss', best_loss, epoch)
-                writer.add_scalar(f'Valid/best_wll', best_wll, epoch)
+                writer.add_scalar(f'{plane.upper()}/Valid/val_loss', val_loss, epoch)
+                writer.add_scalar(f'{plane.upper()}/Valid/val_wll', val_wll, epoch)
+                writer.add_scalar(f'{plane.upper()}/Valid/best_loss', best_loss, epoch)
+                writer.add_scalar(f'{plane.upper()}/Valid/best_wll', best_wll, epoch)
 
         fold_score.append(best_wll.item())
         fold_score.append(best_loss)
