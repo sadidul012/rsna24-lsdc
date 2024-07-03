@@ -1,18 +1,13 @@
 import os
-import random
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from glob import glob
-import matplotlib.pyplot as plt
-import torch
 import tqdm
 from torch.utils.data import Dataset
 import albumentations as A
 import pydicom
 import pickle
-import cv2
 
 
 # TODO OneHot output
@@ -70,10 +65,22 @@ def load_dicom(path):
 
 
 def read_train_csv(data_path):
-    if os.path.exists(data_path / "temp_train.csv"):
-        return pd.read_csv(data_path / "temp_train.csv")
+    if os.path.exists(data_path / "temp_train.csv") and os.path.exists(data_path / "temp_train_solution.csv"):
+        return pd.read_csv(data_path / "temp_train.csv"), pd.read_csv(data_path / "temp_train_solution.csv")
 
     train_main = pd.read_csv(data_path / "train.csv")
+
+    solution = train_main.melt(id_vars=["study_id"], var_name="full_label", value_name="severity")
+    solution["row_id"] = solution.apply(lambda row: str(row.study_id) + "_" + row.full_label, axis=1)
+    solution.severity = solution.severity.fillna("Normal/Mild")
+    solution.loc[solution.severity == "Normal/Mild", "normal_mild"] = 1
+    solution.loc[solution.severity == "Moderate", "moderate"] = 1
+    solution.loc[solution.severity == "Severe", "severe"] = 1
+    solution = solution[["study_id", "row_id", "normal_mild", "moderate", "severe"]]
+    solution = solution.fillna(0)
+    solution = solution.sort_values(by=["row_id"])
+    solution.to_csv(data_path / "temp_train_solution.csv", index=False)
+
     train_desc = pd.read_csv(data_path / "train_series_descriptions.csv")
     train_label_coordinates = pd.read_csv(data_path / "train_label_coordinates.csv")
     for i, row in train_desc.iterrows():
@@ -90,7 +97,7 @@ def read_train_csv(data_path):
     )
     train_label_coordinates.to_csv(data_path / "temp_train.csv", index=False)
 
-    return train_label_coordinates
+    return train_label_coordinates, solution
 
 
 def validation_transform(height, width):
@@ -252,8 +259,8 @@ class RSNA24DatasetBase(Dataset):
 
 
 if __name__ == '__main__':
-    _train = read_train_csv(DATA_PATH)
-
+    _train, sol = read_train_csv(DATA_PATH)
+    print(sol.shape)
     # balanced = balance(train)
     print(_train.shape)
 
@@ -278,5 +285,5 @@ if __name__ == '__main__':
     dataset = RSNA24DatasetBase(_axial_t2, transform=train_transform(512, 512))
     for i in tqdm.tqdm(range(len(dataset))):
         _x, _label = dataset.__getitem__(i)
-        # print(_x.shape, _label.shape)
-        # break
+        print(_x.shape, _label.shape)
+        break

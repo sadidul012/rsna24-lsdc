@@ -227,11 +227,55 @@ def train(df, plane, n_classes):
     return fold_score
 
 
+def test(df, solution):
+    skf = KFold(n_splits=N_FOLDS, shuffle=True, random_state=SEED)
+    fold_score = []
+    df = df.head(200)
+    study_ids = np.array(df.study_id.unique())
+    for fold, (trn_idx, val_idx) in enumerate(skf.split(range(len(study_ids)))):
+        print("train size", len(trn_idx), "test size", len(val_idx))
+        df_valid = df.loc[df.study_id.isin(study_ids[val_idx])]
+        fold_sol = solution.loc[solution.study_id.isin(study_ids[val_idx])]
+        valid_ds = RSNA24DatasetBase(df_valid, transform=validation_transform(512, 512))
+        valid_dl = DataLoader(
+            valid_ds, batch_size=1, shuffle=False, pin_memory=False, drop_last=False, num_workers=N_WORKERS
+        )
+        total_loss = 0
+        y_preds = []
+        labels = []
+
+        model.eval()
+        with tqdm(valid_dl, leave=True, desc=f"Validation") as pbar:
+            with torch.no_grad():
+                for idx, (x, t) in enumerate(pbar):
+                    x = x.to(device).type(torch.float32)
+                    t = t.to(device)
+                    with autocast:
+                        loss = 0
+                        y = model(x)
+                        loss = loss + criterion(y, t) / n_labels
+                        y_preds.append(y.cpu())
+                        labels.append(t.cpu())
+                        total_loss += loss.item()
+
+            val_loss = total_loss / len(valid_dl)
+
+            y_preds = torch.cat(y_preds, dim=0)
+            labels = torch.cat(labels)
+            val_wll = criterion2(y_preds, labels)
+            old_val_loss = best_loss
+            old_wll_metric = best_wll
+        break
+
+
 if __name__ == '__main__':
     PRETRAINED = True
-    _train = read_train_csv(DATA_PATH)
+    _train, _solution = read_train_csv(DATA_PATH)
     _sagittal_t2, _sagittal_t1, _axial_t2 = process_train_csv(_train)
 
-    train(_sagittal_t2, "sagittal_t2", 15)
-    train(_sagittal_t1, "sagittal_t1", 30)
-    train(_axial_t2, "axial_t2", 6)
+    if TRAIN:
+        train(_sagittal_t2, "sagittal_t2", 15)
+        train(_sagittal_t1, "sagittal_t1", 30)
+        train(_axial_t2, "axial_t2", 6)
+
+    test(_train, _solution)
