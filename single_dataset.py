@@ -1,17 +1,22 @@
 import os
+import warnings
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import tqdm
+from pandas.errors import SettingWithCopyWarning
 from torch.utils.data import Dataset
 import albumentations as A
 import pydicom
 import pickle
 
-
 # TODO OneHot output
 # TODO Balanced dataset
+
+warnings.filterwarnings("ignore", category=SettingWithCopyWarning)
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+
 DATA_PATH = Path("/mnt/Cache/rsna-2024-lumbar-spine-degenerative-classification")
 
 
@@ -76,7 +81,12 @@ def read_train_csv(data_path):
     solution.loc[solution.severity == "Normal/Mild", "normal_mild"] = 1
     solution.loc[solution.severity == "Moderate", "moderate"] = 1
     solution.loc[solution.severity == "Severe", "severe"] = 1
-    solution = solution[["study_id", "row_id", "normal_mild", "moderate", "severe"]]
+
+    solution.loc[solution.severity == "Normal/Mild", "sample_weight"] = 1
+    solution.loc[solution.severity == "Moderate", "sample_weight"] = 2
+    solution.loc[solution.severity == "Severe", "sample_weight"] = 3
+
+    solution = solution[["study_id", "row_id", "normal_mild", "moderate", "severe", "sample_weight"]]
     solution = solution.fillna(0)
     solution = solution.sort_values(by=["row_id"])
     solution.to_csv(data_path / "temp_train_solution.csv", index=False)

@@ -67,7 +67,7 @@ def load_dicom(path):
 class RSNA24DatasetInference(Dataset):
     def __init__(self, dataframe, image_dir):
         self.df = dataframe
-        self.study_ids = list(df['study_id'].unique())
+        self.study_ids = list(self.df['study_id'].unique())
         self.image_dir = image_dir
         self.transform = A.Compose([
             A.Resize(IMG_SIZE[0], IMG_SIZE[1]),
@@ -184,11 +184,13 @@ def apply(x):
     return result
 
 
-def prepare_submission(dataset, model_name, image_dir):
-    sub = dataset
+def prepare_submission(dataset, image_dir):
+    # TODO utilize all data
+    dataset = dataset.drop_duplicates(subset=["study_id", "series_description"])
     dataset["instance_number"] = dataset.apply(lambda x: [
         os.path.splitext(os.path.basename(d))[0] for d in glob(f"{image_dir}/{x["study_id"]}/{x["series_id"]}/*.dcm")
     ], axis=1)
+
     dataset = dataset.explode("instance_number")
 
     sagittal_t2 = get_model_output(
@@ -216,12 +218,12 @@ def prepare_submission(dataset, model_name, image_dir):
     axial_t2 = axial_t2.groupby(by=["study_id", "series_id"]).apply(lambda x: apply(x)).reset_index(drop=True)
     sub = pd.concat([sagittal_t2, sagittal_t1, axial_t2])
     # sub = sub.sort_values(by="row_id")
-    return sub
+    return sub.reset_index(drop=True)
 
 
 if __name__ == '__main__':
     df = pd.read_csv(f'{rd}/test_series_descriptions.csv')
-    submission = prepare_submission(df, MODEL_NAME, f"{rd}/test_images/")
+    submission = prepare_submission(df, f"{rd}/test_images/")
     print(submission.shape)
     submission.to_csv('submission.csv', index=False)
 
