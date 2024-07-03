@@ -14,8 +14,7 @@ from tqdm import tqdm
 from transformers import get_cosine_schedule_with_warmup
 
 from model import RSNA24Model
-from single_dataset import read_train_csv, DATA_PATH, process_train_csv, RSNA24DatasetBase, train_transform, \
-    validation_transform
+from single_dataset import read_train_csv, DATA_PATH, process_train_csv, RSNA24DatasetBase, train_transform, validation_transform
 
 MODEL_NAME = "efficientnet_b2"
 
@@ -31,17 +30,17 @@ USE_AMP = True  # can change True if using T4 or newer than Ampere
 N_WORKERS = 4
 SEED = 8620
 GRAD_ACC = 2
-TGT_BATCH_SIZE = 8
+TGT_BATCH_SIZE = 64
 BATCH_SIZE = TGT_BATCH_SIZE // GRAD_ACC
 MAX_GRAD_NORM = None
-EARLY_STOPPING_EPOCH = 5
+EARLY_STOPPING_EPOCH = 3
 
 IMG_SIZE = [512, 512]
 IN_CHANS = 3
 
 AUG_PROB = 0.75
 N_FOLDS = 5 if not DEBUG else 2
-EPOCHS = 10 if not DEBUG else 2
+EPOCHS = 100 if not DEBUG else 2
 
 LR = 1e-4
 WD = 1e-2
@@ -72,11 +71,18 @@ def train(df, plane, n_classes):
     skf = KFold(n_splits=N_FOLDS, shuffle=True, random_state=SEED)
     n_labels = int(n_classes / 3)
     fold_score = []
+    study_ids = np.array(df.study_id.unique())
 
-    for fold, (trn_idx, val_idx) in enumerate(skf.split(range(len(df)))):
+    for fold, (trn_idx, val_idx) in enumerate(skf.split(range(len(study_ids)))):
         print("train size", len(trn_idx), "test size", len(val_idx))
-        df_train = df.iloc[trn_idx]
-        df_valid = df.iloc[val_idx]
+        trx_study_id = study_ids[trn_idx]
+        val_study_id = study_ids[val_idx]
+
+        df_train = df.loc[df.study_id.isin(trx_study_id)]
+        df_valid = df.loc[df.study_id.isin(val_study_id)]
+        # df_train = df.iloc[trn_idx]
+        # df_valid = df.iloc[val_idx]
+
         train_ds = RSNA24DatasetBase(df_train, transform=train_transform(512, 512))
         train_dl = DataLoader(
             train_ds, batch_size=BATCH_SIZE, shuffle=True, pin_memory=False, drop_last=True, num_workers=N_WORKERS
@@ -179,7 +185,7 @@ def train(df, plane, n_classes):
 
                 y_preds = torch.cat(y_preds, dim=0)
                 labels = torch.cat(labels)
-                val_wll = criterion2(y_preds, labels)
+                val_wll = criterion2(y_preds, labels) / n_labels
                 old_val_loss = best_loss
                 old_wll_metric = best_wll
                 if val_loss < best_loss or val_wll < best_wll:

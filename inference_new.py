@@ -22,17 +22,17 @@ warnings.filterwarnings("ignore", category=SettingWithCopyWarning)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 rd = '/mnt/Cache/rsna-2024-lumbar-spine-degenerative-classification'
-OUTPUT_DIR = f'rsna24-data/rsna24-3-efficientnet_b2-5'
+OUTPUT_DIR = 'rsna24-data/rsna24-3-efficientnet_b2-5'
 MODEL_NAME = "efficientnet_b2"
 
-N_WORKERS = math.floor(os.cpu_count()/3) + 1
+N_WORKERS = math.floor(os.cpu_count()/2) + 1
 USE_AMP = True
 SEED = 8620
 
 IMG_SIZE = [512, 512]
 IN_CHANS = 3
 
-BATCH_SIZE = 1
+BATCH_SIZE = 64
 device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
 
 sample_sub = pd.read_csv(f'{rd}/sample_submission.csv')
@@ -80,7 +80,7 @@ class RSNA24DatasetInference(Dataset):
 
     def __getitem__(self, idx):
         x = self.df.iloc[idx]
-        image = load_dicom(f"{self.image_dir}/{x["study_id"]}/{x["series_id"]}/{x["instance_number"]}.dcm")
+        image = load_dicom(f"{self.image_dir}/{x['study_id']}/{x['series_id']}/{x['instance_number']}.dcm")
         if self.transform:
             image = self.transform(image=image)["image"]
             image = image.transpose(2, 0, 1).astype(np.float32)
@@ -89,7 +89,7 @@ class RSNA24DatasetInference(Dataset):
 
 
 class RSNA24Model(nn.Module):
-    def __init__(self, model_name, in_c=30, n_classes=75, pretrained=True, features_only=False):
+    def __init__(self, model_name, in_c=3, n_classes=30, pretrained=True, features_only=False):
         super().__init__()
         self.model = timm.create_model(
             model_name,
@@ -116,7 +116,7 @@ def get_model_output(data, path, n_classes, image_dir):
     model.to(device)
 
     dataset = RSNA24DatasetInference(data, image_dir)
-    dl = DataLoader(dataset, batch_size=4, shuffle=False, num_workers=N_WORKERS, pin_memory=False, drop_last=False)
+    dl = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=N_WORKERS, pin_memory=False, drop_last=False)
 
     y_preds = []
     with tqdm.tqdm(total=len(dl), leave=True) as pbar:
@@ -178,7 +178,7 @@ def apply(x):
 
     result = []
     for level, pred in zip(row_names[x.iloc[0].series_description], preds):
-        result.append([f"{x.iloc[0]["study_id"]}_{level}"] + list(pred))
+        result.append([f"{x.iloc[0]['study_id']}_{level}"] + list(pred))
     result = pd.DataFrame(result, columns=labels)
 
     return result
@@ -188,7 +188,7 @@ def prepare_submission(dataset, image_dir):
     # TODO utilize all data
     dataset = dataset.drop_duplicates(subset=["study_id", "series_description"])
     dataset["instance_number"] = dataset.apply(lambda x: [
-        os.path.splitext(os.path.basename(d))[0] for d in glob(f"{image_dir}/{x["study_id"]}/{x["series_id"]}/*.dcm")
+        os.path.splitext(os.path.basename(d))[0] for d in glob(f"{image_dir}/{x['study_id']}/{x['series_id']}/*.dcm")
     ], axis=1)
 
     dataset = dataset.explode("instance_number")
@@ -227,4 +227,4 @@ if __name__ == '__main__':
     print(submission.shape)
     submission.to_csv('submission.csv', index=False)
 
-    print(pd.read_csv('submission.csv').to_string())
+    print(pd.read_csv('submission.csv').head().to_string())
