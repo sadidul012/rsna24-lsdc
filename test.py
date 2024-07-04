@@ -15,7 +15,10 @@ def test(df, solution):
     # exit()
 
     study_ids = np.array(df.study_id.unique())
+    scores = []
     for fold, (trn_idx, val_idx) in enumerate(skf.split(range(len(study_ids)))):
+        # if fold < 1:
+        #     continue
         print(f"Test fold {fold}")
         print("train size", len(trn_idx), "test size", len(val_idx))
         # val_study_id = [3008676218, 2780132468, 2492114990]
@@ -23,12 +26,21 @@ def test(df, solution):
         val_study_id = study_ids[val_idx]
 
         fold_sol = solution.loc[solution.study_id.isin(val_study_id)].reset_index(drop=True)
+        # print(fold_sol.to_string())
         fold_desc = train_desc.loc[train_desc.study_id.isin(val_study_id)]
-
         sub = prepare_submission(fold_desc, DATA_PATH / f"train_images/")
-        s = score(fold_sol[["row_id", "normal_mild", "moderate", "severe", "sample_weight"]], sub, "row_id", 1)
-        print("score", s)
-        break
+
+        fold_sol = fold_sol[["row_id", "normal_mild", "moderate", "severe", "sample_weight"]].sort_values(by="row_id").reset_index(drop=True)
+
+        try:
+            s = score(fold_sol, sub, "row_id", 1)
+            print("fold score", s)
+            scores.append(s)
+        except Exception as e:
+            print(e)
+            print("scoring error")
+
+    print("CV:", np.mean(scores))
 
 
 if __name__ == '__main__':

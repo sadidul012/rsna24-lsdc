@@ -16,12 +16,15 @@ from transformers import get_cosine_schedule_with_warmup
 from single_inference import RSNA24Model
 from single_dataset import read_train_csv, DATA_PATH, process_train_csv, RSNA24DatasetBase, train_transform, validation_transform
 
-MODEL_NAME = "efficientnet_b2"
+# TODO train and compare pretraine=true and false
+
+
+MODEL_NAME = "efficientnet_b3"
 
 rd = '/mnt/Cache/rsna-2024-lumbar-spine-degenerative-classification'
 DEBUG = False
 
-PRETRAINED = True
+PRETRAINED = False
 RETRAIN = False
 
 device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
@@ -40,7 +43,7 @@ IN_CHANS = 3
 
 AUG_PROB = 0.75
 N_FOLDS = 5 if not DEBUG else 2
-EPOCHS = 100 if not DEBUG else 2
+EPOCHS = 15 if not DEBUG else 2
 
 LR = 1e-4
 WD = 1e-2
@@ -113,8 +116,8 @@ def train(df, plane, n_classes):
         criterion = nn.CrossEntropyLoss(weight=weights.to(device))
         criterion2 = nn.CrossEntropyLoss(weight=weights)
 
-        best_loss = 12
-        best_wll = 12
+        best_loss = 1200
+        best_wll = 1200
         es_step = 0
         log_dir = "rsna24-data/logs" + f"/{MODEL_NAME}/Fold-{fold}/{N_FOLDS}"
 
@@ -225,14 +228,13 @@ def train(df, plane, n_classes):
                 writer.add_scalar(f'{plane.upper()}/Valid/best_loss', best_loss, epoch)
                 writer.add_scalar(f'{plane.upper()}/Valid/best_wll', best_wll, epoch)
 
-        fold_score.append(best_wll.item())
+        fold_score.append(best_wll)
         fold_score.append(best_loss)
 
     return fold_score
 
 
 if __name__ == '__main__':
-    PRETRAINED = True
     _train, _solution = read_train_csv(DATA_PATH)
     _sagittal_t2, _sagittal_t1, _axial_t2 = process_train_csv(_train)
 

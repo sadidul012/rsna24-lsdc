@@ -22,8 +22,8 @@ warnings.filterwarnings("ignore", category=SettingWithCopyWarning)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 rd = '/mnt/Cache/rsna-2024-lumbar-spine-degenerative-classification'
-OUTPUT_DIR = 'rsna24-data/rsna24-3-efficientnet_b2-5'
-MODEL_NAME = "efficientnet_b2"
+OUTPUT_DIR = 'rsna24-data/rsna24-3-efficientnet_b3-5'
+MODEL_NAME = "efficientnet_b3"
 
 N_WORKERS = math.floor(os.cpu_count()/2) + 1
 USE_AMP = True
@@ -55,12 +55,16 @@ LEVELS = [
 
 
 def load_dicom(path):
-    dicom = pydicom.read_file(path)
-    data = dicom.pixel_array
-    data = data - np.min(data)
-    if np.max(data) != 0:
-        data = data / np.max(data)
-    data = (data * 255).astype(np.uint8)
+    try:
+        dicom = pydicom.read_file(path)
+        data = dicom.pixel_array
+        data = data - np.min(data)
+        if np.max(data) != 0:
+            data = data / np.max(data)
+        data = (data * 255).astype(np.uint8)
+    except Exception as e:
+        print(e)
+        data = np.zeros((200, 200)).astype(np.uint8)
     return data
 
 
@@ -184,13 +188,28 @@ def apply(x):
     return result
 
 
+def inject_series_description(x):
+    rows = pd.DataFrame([
+        [x.iloc[0].study_id, -100, "Axial T2"],
+        [x.iloc[0].study_id, -100, 'Sagittal T2/STIR'],
+        [x.iloc[0].study_id, -100, "Sagittal T1"]
+    ], columns=["study_id", "series_id", "series_description"])
+
+    rows = pd.concat([x, rows]).drop_duplicates(subset=["study_id", "series_description"], keep="first")
+    return rows
+
+
+def instance_image_path(x, image_dir):
+    return [
+        os.path.splitext(os.path.basename(d))[0] for d in glob(f"{image_dir}/{x['study_id']}/{x['series_id']}/*.dcm")
+    ]
+
+
 def prepare_submission(dataset, image_dir):
     # TODO utilize all data
     dataset = dataset.drop_duplicates(subset=["study_id", "series_description"])
-    dataset["instance_number"] = dataset.apply(lambda x: [
-        os.path.splitext(os.path.basename(d))[0] for d in glob(f"{image_dir}/{x['study_id']}/{x['series_id']}/*.dcm")
-    ], axis=1)
-
+    dataset = dataset.groupby("study_id").apply(lambda x: inject_series_description(x)).reset_index(drop=True)
+    dataset["instance_number"] = dataset.apply(lambda x: instance_image_path(x, image_dir), axis=1)
     dataset = dataset.explode("instance_number")
 
     sagittal_t2 = get_model_output(
@@ -216,11 +235,13 @@ def prepare_submission(dataset, image_dir):
         image_dir
     )
     axial_t2 = axial_t2.groupby(by=["study_id", "series_id"]).apply(lambda x: apply(x)).reset_index(drop=True)
-    sub = pd.concat([sagittal_t2, sagittal_t1, axial_t2])
-    # sub = sub.sort_values(by="row_id")
+    sub = pd.concat([sagittal_t1, axial_t2, sagittal_t2]).sort_values("row_id")
+    # sub = sub.groupby("study_id").apply(lambda x: x).reset_index(drop=True)[["row_id", "normal_mild", "moderate", "severe"]]
+    # print(sub.to_string())
     return sub.reset_index(drop=True)
 
 
+# 2.3338262493296744
 if __name__ == '__main__':
     df = pd.read_csv(f'{rd}/test_series_descriptions.csv')
     submission = prepare_submission(df, f"{rd}/test_images/")
