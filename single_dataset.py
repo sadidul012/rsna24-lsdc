@@ -8,8 +8,8 @@ import tqdm
 from pandas.errors import SettingWithCopyWarning
 from torch.utils.data import Dataset
 import albumentations as A
-import pydicom
 import pickle
+from single_inference import load_dicom
 
 # TODO OneHot output
 # TODO Balanced dataset
@@ -57,16 +57,6 @@ def get_full_label():
             index_count += 1
     full_labels["Axial T2"] = _full_labels
     return full_labels
-
-
-def load_dicom(path):
-    dicom = pydicom.read_file(path)
-    data = dicom.pixel_array
-    data = data - np.min(data)
-    if np.max(data) != 0:
-        data = data / np.max(data)
-    data = (data * 255).astype(np.uint8)
-    return data
 
 
 def read_train_csv(data_path):

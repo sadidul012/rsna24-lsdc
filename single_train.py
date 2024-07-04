@@ -13,7 +13,7 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 from transformers import get_cosine_schedule_with_warmup
 
-from model import RSNA24Model
+from single_inference import RSNA24Model
 from single_dataset import read_train_csv, DATA_PATH, process_train_csv, RSNA24DatasetBase, train_transform, validation_transform
 
 MODEL_NAME = "efficientnet_b2"
@@ -30,7 +30,7 @@ USE_AMP = True  # can change True if using T4 or newer than Ampere
 N_WORKERS = 4
 SEED = 8620
 GRAD_ACC = 2
-TGT_BATCH_SIZE = 64
+TGT_BATCH_SIZE = 32
 BATCH_SIZE = TGT_BATCH_SIZE // GRAD_ACC
 MAX_GRAD_NORM = None
 EARLY_STOPPING_EPOCH = 3
@@ -227,7 +227,6 @@ def train(df, plane, n_classes):
 
         fold_score.append(best_wll.item())
         fold_score.append(best_loss)
-        break
 
     return fold_score
 

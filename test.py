@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 from sklearn.model_selection import KFold
 
-from inference_new import prepare_submission
+from single_inference import prepare_submission
 from score import score
 from single_dataset import read_train_csv, DATA_PATH, process_train_csv
 from train import N_FOLDS, SEED
