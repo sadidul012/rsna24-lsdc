@@ -76,16 +76,16 @@ IMG_SIZE = [512, 512]
 IN_CHANS = 3
 
 AUG_PROB = 0.75
-N_FOLDS = 5 if not DEBUG else 2
-EPOCHS = 10 if not DEBUG else 2
+N_FOLDS = 14 if not DEBUG else 2
+EPOCHS = 20 if not DEBUG else 2
 
 LR = 1e-4
 WD = 1e-2
 AUG = True
 NUMBER_OF_SAMPLES = -1 if not DEBUG else -1
-MODEL_SLUG = f"rsna24-p{1 if PRETRAINED else 0}"
+MODEL_SLUG = f"{MODEL_NAME}-C{IN_CHANS}P{1 if PRETRAINED else 0}B{BATCH_SIZE}E{EPOCHS}F{N_FOLDS}"
 OUTPUT_FOLDER = "rsna24-data"
-OUTPUT_DIR = f'{OUTPUT_FOLDER}/{MODEL_SLUG}-{IN_CHANS}-{MODEL_NAME}-{N_FOLDS}'
+OUTPUT_DIR = f'{OUTPUT_FOLDER}/{MODEL_SLUG}'
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 
@@ -153,7 +153,7 @@ def train(df, plane, n_classes):
         best_loss = 1200
         best_wll = 1200
         es_step = 0
-        log_dir = f"{OUTPUT_FOLDER}/logs" + f"/{MODEL_SLUG}-{MODEL_NAME}/F{fold}/{N_FOLDS}"
+        log_dir = f"{OUTPUT_FOLDER}/logs" + f"/{MODEL_SLUG}/F{fold}"
 
         if os.path.exists(log_dir):
             log_dir = log_dir + f"+1"
