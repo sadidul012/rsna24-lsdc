@@ -49,7 +49,8 @@ LR = 1e-4
 WD = 1e-2
 AUG = True
 NUMBER_OF_SAMPLES = -1 if not DEBUG else -1
-OUTPUT_DIR = f'rsna24-data/rsna24-{IN_CHANS}-{MODEL_NAME}-{N_FOLDS}'
+OUTPUT_FOLDER = "rsna24-data-new"
+OUTPUT_DIR = f'{OUTPUT_FOLDER}/rsna24-{IN_CHANS}-{MODEL_NAME}-{N_FOLDS}'
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 
@@ -83,14 +84,12 @@ def train(df, plane, n_classes):
 
         df_train = df.loc[df.study_id.isin(trx_study_id)]
         df_valid = df.loc[df.study_id.isin(val_study_id)]
-        # df_train = df.iloc[trn_idx]
-        # df_valid = df.iloc[val_idx]
 
-        train_ds = RSNA24DatasetBase(df_train, transform=train_transform(512, 512))
+        train_ds = RSNA24DatasetBase(df_train, transform=train_transform(0.75))
         train_dl = DataLoader(
             train_ds, batch_size=BATCH_SIZE, shuffle=True, pin_memory=False, drop_last=True, num_workers=N_WORKERS
         )
-        valid_ds = RSNA24DatasetBase(df_valid, transform=validation_transform(512, 512))
+        valid_ds = RSNA24DatasetBase(df_valid)
         valid_dl = DataLoader(
             valid_ds, batch_size=BATCH_SIZE * 2, shuffle=False, pin_memory=False, drop_last=False, num_workers=N_WORKERS
         )
@@ -119,7 +118,7 @@ def train(df, plane, n_classes):
         best_loss = 1200
         best_wll = 1200
         es_step = 0
-        log_dir = "rsna24-data/logs" + f"/{MODEL_NAME}/Fold-{fold}/{N_FOLDS}"
+        log_dir = f"{OUTPUT_FOLDER}/logs" + f"/{MODEL_NAME}/Fold-{fold}/{N_FOLDS}"
 
         if os.path.exists(log_dir):
             log_dir = log_dir + f"+1"
