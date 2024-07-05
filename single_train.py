@@ -42,7 +42,7 @@ IMG_SIZE = [512, 512]
 IN_CHANS = 3
 
 AUG_PROB = 0.75
-N_FOLDS = 5 if not DEBUG else 2
+N_FOLDS = 10 if not DEBUG else 2
 EPOCHS = 15 if not DEBUG else 2
 
 LR = 1e-4
@@ -229,6 +229,8 @@ def train(df, plane, n_classes):
 
         fold_score.append(best_wll)
         fold_score.append(best_loss)
+
+        break
 
     return fold_score
 

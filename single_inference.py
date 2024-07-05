@@ -20,9 +20,10 @@ import pydicom
 
 warnings.filterwarnings("ignore", category=SettingWithCopyWarning)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.filterwarnings("ignore", category=UserWarning)
 
 rd = '/mnt/Cache/rsna-2024-lumbar-spine-degenerative-classification'
-OUTPUT_DIR = 'rsna24-data/rsna24-3-efficientnet_b3-5'
+OUTPUT_DIR = 'rsna24-data-new/rsna24-3-efficientnet_b3-5'
 MODEL_NAME = "efficientnet_b3"
 
 N_WORKERS = math.floor(os.cpu_count()/2) + 1
@@ -32,7 +33,7 @@ SEED = 8620
 IMG_SIZE = [512, 512]
 IN_CHANS = 3
 
-BATCH_SIZE = 64
+BATCH_SIZE = 32
 device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
 
 sample_sub = pd.read_csv(f'{rd}/sample_submission.csv')
@@ -182,9 +183,9 @@ class RSNA24DatasetInference(Dataset):
 
         image = self.resize(image=image)["image"]
 
-        if x.plane == "Sagittal T2/STIR" or x.plane == "Sagittal T1":
+        if x.series_description == "Sagittal T2/STIR" or x.series_description == "Sagittal T1":
             image = process_sagittal(image)
-        if x.plane == "Axial T2":
+        if x.series_description == "Axial T2":
             image = process_axial(image)
 
         image = self.common_transform(image=image)["image"]
@@ -306,7 +307,7 @@ def instance_image_path(x, image_dir):
     ]
 
 
-def prepare_submission(dataset, image_dir):
+def prepare_submission(dataset, image_dir, sagittal_model_t2, sagittal_model_t1, axial_model_t1):
     # TODO utilize all data
     dataset = dataset.drop_duplicates(subset=["study_id", "series_description"])
     dataset = dataset.groupby("study_id").apply(lambda x: inject_series_description(x)).reset_index(drop=True)
@@ -315,7 +316,7 @@ def prepare_submission(dataset, image_dir):
 
     sagittal_t2 = get_model_output(
         dataset.loc[dataset.series_description == "Sagittal T2/STIR"],
-        OUTPUT_DIR + '/sagittal_t2-best_wll_model_fold-0.pt',
+        sagittal_model_t2,
         15,
         image_dir
     )
@@ -323,7 +324,7 @@ def prepare_submission(dataset, image_dir):
 
     sagittal_t1 = get_model_output(
         dataset.loc[dataset.series_description == "Sagittal T1"],
-        OUTPUT_DIR + '/sagittal_t1-best_wll_model_fold-0.pt',
+        sagittal_model_t1,
         30,
         image_dir
     )
@@ -331,7 +332,7 @@ def prepare_submission(dataset, image_dir):
 
     axial_t2 = get_model_output(
         dataset.loc[dataset.series_description == "Axial T2"],
-        OUTPUT_DIR + '/axial_t2-best_wll_model_fold-0.pt',
+        axial_model_t1,
         6,
         image_dir
     )
@@ -345,7 +346,13 @@ def prepare_submission(dataset, image_dir):
 # 2.3338262493296744
 if __name__ == '__main__':
     df = pd.read_csv(f'{rd}/test_series_descriptions.csv')
-    submission = prepare_submission(df, f"{rd}/test_images/")
+    submission = prepare_submission(
+        df,
+        f"{rd}/test_images/",
+        OUTPUT_DIR + '/sagittal_t2-best_wll_model_fold-4.pt',
+        OUTPUT_DIR + '/sagittal_t1-best_wll_model_fold-4.pt',
+        OUTPUT_DIR + '/axial_t2-best_wll_model_fold-4.pt'
+    )
     print(submission.shape)
     submission.to_csv('submission.csv', index=False)
 

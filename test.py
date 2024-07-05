@@ -8,7 +8,7 @@ from single_dataset import read_train_csv, DATA_PATH, process_train_csv
 from train import N_FOLDS, SEED
 
 
-def test(df, solution):
+def test(df, solution, model_location):
     skf = KFold(n_splits=N_FOLDS, shuffle=True, random_state=SEED)
     train_desc = pd.read_csv(DATA_PATH / "train_series_descriptions.csv")
     # print(train_desc.groupby("study_id").count().to_string())
@@ -28,19 +28,38 @@ def test(df, solution):
         fold_sol = solution.loc[solution.study_id.isin(val_study_id)].reset_index(drop=True)
         # print(fold_sol.to_string())
         fold_desc = train_desc.loc[train_desc.study_id.isin(val_study_id)]
-        sub = prepare_submission(fold_desc, DATA_PATH / f"train_images/")
+        sub = prepare_submission(
+            fold_desc,
+            DATA_PATH / f"train_images/",
+            model_location + f'/sagittal_t2-best_wll_model_fold-{fold}.pt',
+            model_location + f'/sagittal_t1-best_wll_model_fold-{fold}.pt',
+            model_location + f'/axial_t2-best_wll_model_fold-{fold}.pt'
+        )
 
         fold_sol = fold_sol[["row_id", "normal_mild", "moderate", "severe", "sample_weight"]].sort_values(by="row_id").reset_index(drop=True)
 
         try:
             s = score(fold_sol, sub, "row_id", 1)
             print("fold score", s)
+            with open(model_location + f"/result", "a+") as file:
+                file.write(
+                    f"\n\n**********\n"
+                    f"Fold: {fold} Score: {s:.2f}\n"
+                )
             scores.append(s)
         except Exception as e:
             print(e)
             print("scoring error")
 
+        # break
+
     print("CV:", np.mean(scores))
+    with open(model_location + f"/result", "a+") as file:
+        file.write(
+            f"\n\n**********\n"
+            f"KFolds: {N_FOLDS} CV: {np.mean(scores):.2f}\n"
+            f"\n\n***************************************\n"
+        )
 
 
 if __name__ == '__main__':
@@ -48,4 +67,8 @@ if __name__ == '__main__':
     _train, _solution = read_train_csv(DATA_PATH)
     _sagittal_t2, _sagittal_t1, _axial_t2 = process_train_csv(_train)
 
-    test(_train, _solution)
+    test(
+        _train,
+        _solution,
+        "rsna24-data-new/rsna24-3-efficientnet_b3-5"
+    )
