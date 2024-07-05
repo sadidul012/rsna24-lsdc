@@ -9,13 +9,14 @@ from pandas.errors import SettingWithCopyWarning
 from torch.utils.data import Dataset
 import albumentations as A
 import pickle
-from single_inference import load_dicom
+from single_inference import load_dicom, process_sagittal, process_axial, resize_transform, validation_transform
 
 # TODO OneHot output
 # TODO Balanced dataset
 
 warnings.filterwarnings("ignore", category=SettingWithCopyWarning)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.filterwarnings("ignore", category=UserWarning)
 
 DATA_PATH = Path("/mnt/Cache/rsna-2024-lumbar-spine-degenerative-classification")
 
@@ -100,14 +101,6 @@ def read_train_csv(data_path):
     return train_label_coordinates, solution
 
 
-def validation_transform(height, width):
-    return A.Compose([
-            A.Resize(height, width),
-            A.Normalize(mean=0.5, std=0.5),
-            A.ToRGB()
-        ])
-
-
 def train_transform(aug_prob=0.75):
     return A.Compose([
         A.Resize(240, 240),
@@ -182,89 +175,6 @@ def balance(data):
     return data
 
 
-def process_axial(transformed):
-    transformed1 = A.Compose([
-        A.InvertImg(always_apply=True),
-    ])(image=transformed)["image"]
-
-    transformed2 = A.Compose([
-        A.Equalize(always_apply=True)
-    ])(image=transformed)["image"]
-
-    transformed3 = A.Compose([
-        A.Crop(always_apply=False, p=1.0, x_min=100, y_min=100, x_max=220, y_max=220),
-        A.Resize(300, 300),
-    ])(image=transformed)["image"]
-
-    transformed4 = A.Compose([
-        A.InvertImg(always_apply=True),
-    ])(image=transformed3)["image"]
-
-    transformed5 = A.Compose([
-        A.Equalize(always_apply=True)
-    ])(image=transformed3)["image"]
-
-    transformed6 = A.Compose([
-        A.Crop(always_apply=False, p=1.0, x_min=150, y_min=100, x_max=240, y_max=220),
-        A.Resize(300, 300)
-    ])(image=transformed)["image"]
-
-    transformed7 = A.Compose([
-        A.InvertImg(always_apply=True),
-    ])(image=transformed6)["image"]
-
-    transformed8 = A.Compose([
-        A.Equalize(always_apply=True),
-    ])(image=transformed6)["image"]
-
-    return np.vstack((
-        np.hstack((transformed, transformed1, transformed2)),
-        np.hstack((transformed3, transformed4, transformed5)),
-        np.hstack((transformed6, transformed7, transformed8))
-    ))
-
-
-def process_sagittal(transformed):
-    transformed1 = A.Compose([
-        A.InvertImg(always_apply=True),
-    ])(image=transformed)["image"]
-
-    transformed2 = A.Compose([
-        A.Sharpen(always_apply=True, alpha=(0.2, 0.2), lightness=(3, 3), p=0.75)
-    ])(image=transformed)["image"]
-
-    transformed3 = A.Compose([
-        A.Crop(always_apply=True, p=1.0, x_min=40, y_min=40, x_max=200, y_max=240),
-        A.Resize(300, 300),
-    ])(image=transformed)["image"]
-
-    transformed4 = A.Compose([
-        A.InvertImg(always_apply=True),
-    ])(image=transformed3)["image"]
-
-    transformed5 = A.Compose([
-        A.Sharpen(always_apply=True, alpha=(0.2, 0.2), lightness=(3, 3), p=0.75)
-    ])(image=transformed3)["image"]
-
-    transformed6 = A.Compose([
-        A.Equalize(always_apply=True)
-    ])(image=transformed3)["image"]
-
-    transformed7 = A.Compose([
-        A.Equalize(always_apply=True)
-    ])(image=transformed)["image"]
-
-    transformed8 = A.Compose([
-        A.Downscale(always_apply=False, scale_min=0.099, scale_max=0.099)
-    ])(image=transformed3)["image"]
-
-    return np.vstack((
-        np.hstack((transformed, transformed1, transformed2)),
-        np.hstack((transformed3, transformed4, transformed5)),
-        np.hstack((transformed6, transformed7, transformed8))
-    ))
-
-
 class RSNA24DatasetBase(Dataset):
     def __init__(self, dataframe, transform=None, label_column='full_label', use_cache=True, split="train", image_size=(512, 512)):
         self.dataframe = dataframe
@@ -273,6 +183,7 @@ class RSNA24DatasetBase(Dataset):
         self.use_cache = use_cache
         self.split = split
         self.common_transform = validation_transform(image_size[0], image_size[1])
+        self.resize = resize_transform()
 
     def __len__(self):
         return len(self.dataframe)
@@ -329,6 +240,8 @@ class RSNA24DatasetBase(Dataset):
 
         if self.transform:
             image = self.transform(image=image)["image"]
+        else:
+            image = self.resize(image=image)["image"]
 
         if x.plane == "Sagittal T2/STIR" or x.plane == "Sagittal T1":
             image = process_sagittal(image)
@@ -359,11 +272,11 @@ if __name__ == '__main__':
     #
     # print("_sagittal_t1", _sagittal_t1.shape)
     #
-    # dataset = RSNA24DatasetBase(_sagittal_t1, transform=validation_transform(512, 512))
-    # for i in tqdm.tqdm(range(len(dataset))):
-    #     _x, _label = dataset.__getitem__(i)
-    #     print(_x.shape, _label.shape)
-    #     break
+    dataset = RSNA24DatasetBase(_sagittal_t1)
+    for i in tqdm.tqdm(range(len(dataset))):
+        _x, _label = dataset.__getitem__(i)
+        print(_x.shape, _label.shape)
+        break
 
     print("_axial_t2", _axial_t2.shape)
     dataset = RSNA24DatasetBase(_axial_t2, transform=train_transform(0.75), image_size=(1024, 1024))

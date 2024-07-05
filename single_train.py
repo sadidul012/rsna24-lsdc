@@ -14,7 +14,7 @@ from tqdm import tqdm
 from transformers import get_cosine_schedule_with_warmup
 
 from single_inference import RSNA24Model
-from single_dataset import read_train_csv, DATA_PATH, process_train_csv, RSNA24DatasetBase, train_transform, validation_transform
+from single_dataset import read_train_csv, DATA_PATH, process_train_csv, RSNA24DatasetBase, train_transform
 
 # TODO train and compare pretraine=true and false
 

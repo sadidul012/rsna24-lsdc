@@ -68,16 +68,110 @@ def load_dicom(path):
     return data
 
 
+def process_axial(transformed):
+    transformed1 = A.Compose([
+        A.InvertImg(always_apply=True),
+    ])(image=transformed)["image"]
+
+    transformed2 = A.Compose([
+        A.Equalize(always_apply=True)
+    ])(image=transformed)["image"]
+
+    transformed3 = A.Compose([
+        A.Crop(always_apply=False, p=1.0, x_min=100, y_min=100, x_max=220, y_max=220),
+        A.Resize(300, 300),
+    ])(image=transformed)["image"]
+
+    transformed4 = A.Compose([
+        A.InvertImg(always_apply=True),
+    ])(image=transformed3)["image"]
+
+    transformed5 = A.Compose([
+        A.Equalize(always_apply=True)
+    ])(image=transformed3)["image"]
+
+    transformed6 = A.Compose([
+        A.Crop(always_apply=False, p=1.0, x_min=150, y_min=100, x_max=240, y_max=220),
+        A.Resize(300, 300)
+    ])(image=transformed)["image"]
+
+    transformed7 = A.Compose([
+        A.InvertImg(always_apply=True),
+    ])(image=transformed6)["image"]
+
+    transformed8 = A.Compose([
+        A.Equalize(always_apply=True),
+    ])(image=transformed6)["image"]
+
+    return np.vstack((
+        np.hstack((transformed, transformed1, transformed2)),
+        np.hstack((transformed3, transformed4, transformed5)),
+        np.hstack((transformed6, transformed7, transformed8))
+    ))
+
+
+def process_sagittal(transformed):
+    transformed1 = A.Compose([
+        A.InvertImg(always_apply=True),
+    ])(image=transformed)["image"]
+
+    transformed2 = A.Compose([
+        A.Sharpen(always_apply=True, alpha=(0.2, 0.2), lightness=(3, 3), p=0.75)
+    ])(image=transformed)["image"]
+
+    transformed3 = A.Compose([
+        A.Crop(always_apply=True, p=1.0, x_min=40, y_min=40, x_max=200, y_max=240),
+        A.Resize(300, 300),
+    ])(image=transformed)["image"]
+
+    transformed4 = A.Compose([
+        A.InvertImg(always_apply=True),
+    ])(image=transformed3)["image"]
+
+    transformed5 = A.Compose([
+        A.Sharpen(always_apply=True, alpha=(0.2, 0.2), lightness=(3, 3), p=0.75)
+    ])(image=transformed3)["image"]
+
+    transformed6 = A.Compose([
+        A.Equalize(always_apply=True)
+    ])(image=transformed3)["image"]
+
+    transformed7 = A.Compose([
+        A.Equalize(always_apply=True)
+    ])(image=transformed)["image"]
+
+    transformed8 = A.Compose([
+        A.Downscale(always_apply=False, scale_min=0.099, scale_max=0.099)
+    ])(image=transformed3)["image"]
+
+    return np.vstack((
+        np.hstack((transformed, transformed1, transformed2)),
+        np.hstack((transformed3, transformed4, transformed5)),
+        np.hstack((transformed6, transformed7, transformed8))
+    ))
+
+
+def validation_transform(height, width):
+    return A.Compose([
+            A.Resize(height, width),
+            A.Normalize(mean=0.5, std=0.5),
+            A.ToRGB()
+        ])
+
+
+def resize_transform():
+    return A.Compose([
+        A.Resize(300, 300),
+    ])
+
+
 class RSNA24DatasetInference(Dataset):
     def __init__(self, dataframe, image_dir):
         self.df = dataframe
         self.study_ids = list(self.df['study_id'].unique())
         self.image_dir = image_dir
-        self.transform = A.Compose([
-            A.Resize(IMG_SIZE[0], IMG_SIZE[1]),
-            A.Normalize(mean=0.5, std=0.5),
-            A.ToRGB()
-        ])
+        self.resize = resize_transform()
+        self.common_transform = validation_transform(IMG_SIZE[0], IMG_SIZE[1])
 
     def __len__(self):
         return len(self.df)
@@ -85,9 +179,16 @@ class RSNA24DatasetInference(Dataset):
     def __getitem__(self, idx):
         x = self.df.iloc[idx]
         image = load_dicom(f"{self.image_dir}/{x['study_id']}/{x['series_id']}/{x['instance_number']}.dcm")
-        if self.transform:
-            image = self.transform(image=image)["image"]
-            image = image.transpose(2, 0, 1).astype(np.float32)
+
+        image = self.resize(image=image)["image"]
+
+        if x.plane == "Sagittal T2/STIR" or x.plane == "Sagittal T1":
+            image = process_sagittal(image)
+        if x.plane == "Axial T2":
+            image = process_axial(image)
+
+        image = self.common_transform(image=image)["image"]
+        image = image.transpose(2, 0, 1).astype(np.float32)
 
         return image
 
