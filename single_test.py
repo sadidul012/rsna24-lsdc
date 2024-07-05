@@ -5,7 +5,7 @@ from sklearn.model_selection import KFold
 from single_inference import prepare_submission
 from score import score
 from single_dataset import read_train_csv, DATA_PATH, process_train_csv
-from train import N_FOLDS, SEED
+from single_train import N_FOLDS, SEED, OUTPUT_DIR
 
 
 def test(df, solution, model_location):
@@ -51,7 +51,7 @@ def test(df, solution, model_location):
             print(e)
             print("scoring error")
 
-        # break
+        break
 
     print("CV:", np.mean(scores))
     with open(model_location + f"/result", "a+") as file:
@@ -70,5 +70,5 @@ if __name__ == '__main__':
     test(
         _train,
         _solution,
-        "rsna24-data-new/rsna24-3-efficientnet_b3-5"
+        OUTPUT_DIR
     )

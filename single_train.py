@@ -17,14 +17,48 @@ from single_inference import RSNA24Model
 from single_dataset import read_train_csv, DATA_PATH, process_train_csv, RSNA24DatasetBase, train_transform
 
 # TODO train and compare pretraine=true and false
-
+# ResNet:
+#   ResNet-18: ~11.7 million parameters
+#   ResNet-34: ~21.8 million parameters
+#   ResNet-50: ~25.6 million parameters
+#   ResNet-101: ~44.5 million parameters
+#   ResNet-152: ~60 million parameters
+# VGG:
+#   VGG-16: ~138 million parameters
+#   VGG-19: ~143 million parameters
+# Inception Networks:
+#   Inception v1 (GoogleNet): ~6.8 million parameters
+#   Inception v3: ~23.8 million parameters
+# DenseNet:
+#   DenseNet-121: ~8 million parameters
+#   DenseNet-169: ~14 million parameter
+#   DenseNet-201: ~20 million parameters
+#   DenseNet-264: ~33 million parameters - no pretrained
+#   MobileNets (parameters can vary significantly with changes in alpha and resolution multipliers):
+#   MobileNetV1 (1.0 224): ~4.2 million parameters
+#   MobileNetV2 (1.0 224): ~3.5 million parameters
+#   MobileNetV3 Large: ~5.4 million parameters
+#       mobilenetv3_large_100
+#   Vision Transformers (ViT):
+#   ViT-B/16 (base model with patch size 16x16): ~86 million parameters
+# Xception:
+#   Xception: ~22.9 million parameters
+# EfficientNet
+#   EfficientNet-B0: ~5.3 million parameters
+#   EfficientNet-B1: ~7.8 million parameters
+#   EfficientNet-B2: ~9.2 million parameters
+#   EfficientNet-B3: ~12 million parameters
+#   EfficientNet-B4: ~19 million parameters
+#   EfficientNet-B5: ~30 million parameters
+#   EfficientNet-B6: ~43 million parameters
+#   EfficientNet-B7: ~66 million parameters
 
 MODEL_NAME = "efficientnet_b3"
 
 rd = '/mnt/Cache/rsna-2024-lumbar-spine-degenerative-classification'
 DEBUG = False
 
-PRETRAINED = False
+PRETRAINED = True
 RETRAIN = False
 
 device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
@@ -42,15 +76,16 @@ IMG_SIZE = [512, 512]
 IN_CHANS = 3
 
 AUG_PROB = 0.75
-N_FOLDS = 10 if not DEBUG else 2
-EPOCHS = 15 if not DEBUG else 2
+N_FOLDS = 5 if not DEBUG else 2
+EPOCHS = 10 if not DEBUG else 2
 
 LR = 1e-4
 WD = 1e-2
 AUG = True
 NUMBER_OF_SAMPLES = -1 if not DEBUG else -1
-OUTPUT_FOLDER = "rsna24-data-new"
-OUTPUT_DIR = f'{OUTPUT_FOLDER}/rsna24-{IN_CHANS}-{MODEL_NAME}-{N_FOLDS}'
+MODEL_SLUG = f"rsna24-p{1 if PRETRAINED else 0}"
+OUTPUT_FOLDER = "rsna24-data"
+OUTPUT_DIR = f'{OUTPUT_FOLDER}/{MODEL_SLUG}-{IN_CHANS}-{MODEL_NAME}-{N_FOLDS}'
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 
@@ -118,7 +153,7 @@ def train(df, plane, n_classes):
         best_loss = 1200
         best_wll = 1200
         es_step = 0
-        log_dir = f"{OUTPUT_FOLDER}/logs" + f"/{MODEL_NAME}/Fold-{fold}/{N_FOLDS}"
+        log_dir = f"{OUTPUT_FOLDER}/logs" + f"/{MODEL_SLUG}-{MODEL_NAME}/F{fold}/{N_FOLDS}"
 
         if os.path.exists(log_dir):
             log_dir = log_dir + f"+1"

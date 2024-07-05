@@ -15,8 +15,8 @@ from transformers import get_cosine_schedule_with_warmup
 from sklearn.model_selection import KFold
 from torch.utils.tensorboard import SummaryWriter
 
-from dataset import RSNA24DatasetTrain, RSNA24DatasetValid
-from model import RSNA24Model
+from multi_dataset import RSNA24DatasetTrain, RSNA24DatasetValid
+from multi_model import RSNA24Model
 from score import score
 
 
