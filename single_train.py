@@ -15,11 +15,11 @@ from tqdm import tqdm
 from transformers import get_cosine_schedule_with_warmup
 
 from single_inference import RSNA24Model
-from single_dataset import read_train_csv, DATA_PATH, process_train_csv, RSNA24DatasetBase, train_transform
+from single_dataset import read_train_csv, DATA_PATH, process_train_csv, RSNA24DatasetBase, train_transform, balance_dataset
 
 # TODO train and compare pretraine=true and false
 # ResNet:
-#   ResNet-18: ~11.7 million parameters
+#   ResNet-18: ~11.7 million parameters - 0.785 (P1)
 #   ResNet-34: ~21.8 million parameters
 #   ResNet-50: ~25.6 million parameters
 #   ResNet-101: ~44.5 million parameters
@@ -31,9 +31,10 @@ from single_dataset import read_train_csv, DATA_PATH, process_train_csv, RSNA24D
 #   Inception v1 (GoogleNet): ~6.8 million parameters
 #   Inception v3: ~23.8 million parameters
 # DenseNet:
-#   DenseNet-121: ~8 million parameters
-#   DenseNet-169: ~14 million parameter
-#   DenseNet-201: ~20 million parameters
+#   DenseNet-121: ~8 million parameters - 0.762 (P1)
+#   DenseNet-161: ~26 million parameters - 0.781 (P1)
+#   DenseNet-169: ~14 million parameter - 0.715 (P1) - 0.78 (S)
+#   DenseNet-201: ~20 million parameters - 0.734 (P1)
 #   DenseNet-264: ~33 million parameters - no pretrained
 #   MobileNets (parameters can vary significantly with changes in alpha and resolution multipliers):
 #   MobileNetV1 (1.0 224): ~4.2 million parameters
@@ -43,18 +44,26 @@ from single_dataset import read_train_csv, DATA_PATH, process_train_csv, RSNA24D
 #   Vision Transformers (ViT):
 #   ViT-B/16 (base model with patch size 16x16): ~86 million parameters
 # Xception:
-#   Xception: ~22.9 million parameters
+#   Xception-41: ~24.95 million parameters - 0.723 (P1) - 0.76 (S)
+#   Xception-65: ~37.90 million parameters
+#   Xception-71: ~40.32 million parameters
 # EfficientNet
-#   EfficientNet-B0: ~5.3 million parameters
-#   EfficientNet-B1: ~7.8 million parameters
+#   EfficientNet-B0: ~5.3 million parameters - 0.762 (P1)
+#   EfficientNet-B1: ~7.8 million parameters - 0.758 (P1)
 #   EfficientNet-B2: ~9.2 million parameters - 0.771 (P1)
 #   EfficientNet-B3: ~12 million parameters - 0.770 (P1), 0.883 (P0)
-#   EfficientNet-B4: ~19 million parameters
+#   EfficientNet-B4: ~17 million parameters - 0.759 (P1)
 #   EfficientNet-B5: ~30 million parameters
 #   EfficientNet-B6: ~43 million parameters
 #   EfficientNet-B7: ~66 million parameters
 
-MODEL_NAME = "efficientnet_b2"
+# timm/levit_256.fb_dist_in1k - 17.88M
+# timm/rexnet_150.nav_in1k - 7.84M - 0.757 (P1)
+# timm/regnety_016.tv2_in1k - 10.33M - 0.784 (P1)
+# timm/tinynet_e.in1k - 2M - 0.765
+
+
+MODEL_NAME = "timm/tinynet_e.in1k"
 
 rd = '/mnt/Cache/rsna-2024-lumbar-spine-degenerative-classification'
 DEBUG = False
@@ -83,8 +92,13 @@ EPOCHS = 20 if not DEBUG else 2
 LR = 1e-4
 WD = 1e-2
 AUG = True
-NUMBER_OF_SAMPLES = -1 if not DEBUG else -1
-MODEL_SLUG = f"{MODEL_NAME}-c{IN_CHANS}p{1 if PRETRAINED else 0}b{BATCH_SIZE}e{EPOCHS}f{N_FOLDS}"
+
+MODEL_SLUG = F"DB-c{IN_CHANS}p{1 if PRETRAINED else 0}b{BATCH_SIZE}e{EPOCHS}f{N_FOLDS}"
+try:
+    MODEL_SLUG = f"{MODEL_NAME.split("/")[1]}-{MODEL_SLUG}"
+except IndexError:
+    MODEL_SLUG = f"{MODEL_NAME}-{MODEL_SLUG}"
+
 OUTPUT_FOLDER = "rsna24-data"
 OUTPUT_DIR = f'{OUTPUT_FOLDER}/{MODEL_SLUG}'
 os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -107,19 +121,19 @@ autocast = torch.cuda.amp.autocast(enabled=USE_AMP, dtype=torch.half)  # you can
 scaler = torch.cuda.amp.GradScaler(enabled=USE_AMP, init_scale=4096)
 
 
-def train(df, plane, n_classes):
+def train(df, df_balanced, plane, n_classes):
     skf = KFold(n_splits=N_FOLDS, shuffle=True, random_state=SEED)
     n_labels = int(n_classes / 3)
     fold_score = []
     study_ids = np.array(df.study_id.unique())
 
     for fold, (trn_idx, val_idx) in enumerate(skf.split(range(len(study_ids)))):
-        print("train size", len(trn_idx), "test size", len(val_idx))
         trx_study_id = study_ids[trn_idx]
         val_study_id = study_ids[val_idx]
 
-        df_train = df.loc[df.study_id.isin(trx_study_id)]
+        df_train = df_balanced.loc[df_balanced.study_id.isin(trx_study_id)]
         df_valid = df.loc[df.study_id.isin(val_study_id)]
+        print("train size", len(df_train), "test size", len(df_valid))
 
         train_ds = RSNA24DatasetBase(df_train, transform=train_transform(0.75))
         train_dl = DataLoader(
@@ -247,7 +261,7 @@ def train(df, plane, n_classes):
                         print('early stopping')
                         break
 
-                print("val_loss" + f'{val_loss:.6f}', "val_wll" + f'{val_wll: .6f}')
+                print("val_loss " + f'{val_loss:.6f}', "val_wll" + f'{val_wll: .6f}')
 
                 if old_val_loss > best_loss:
                     print("val_loss" + f'{old_val_loss: .6f}', "->" + f'{best_loss: .6f}')
@@ -272,11 +286,14 @@ if __name__ == '__main__':
     from datetime import timedelta
     start = time.time()
 
-    _train, _solution = read_train_csv(DATA_PATH)
+    _train, _solution, balanced = read_train_csv(DATA_PATH)
     _sagittal_t2, _sagittal_t1, _axial_t2 = process_train_csv(_train)
-
-    train(_sagittal_t2, "sagittal_t2", 15)
-    train(_sagittal_t1, "sagittal_t1", 30)
-    train(_axial_t2, "axial_t2", 6)
+    _sagittal_t2_balanced, _sagittal_t1_balanced, _axial_t2_balanced = process_train_csv(balanced)
+    # print(_sagittal_t2.shape, _sagittal_t2_balanced.shape)
+    # print(_sagittal_t1.shape, _sagittal_t1_balanced.shape)
+    # print(_axial_t2.shape, _axial_t2_balanced.shape)
+    train(_sagittal_t2, _sagittal_t2_balanced, "sagittal_t2", 15)
+    train(_sagittal_t1, _sagittal_t1_balanced, "sagittal_t1", 30)
+    train(_axial_t2, _axial_t2_balanced, "axial_t2", 6)
 
     print(f"Time taken: {timedelta(seconds=time.time() - start)}")

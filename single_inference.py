@@ -23,8 +23,8 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 
 rd = '/mnt/Cache/rsna-2024-lumbar-spine-degenerative-classification'
-OUTPUT_DIR = 'rsna24-data/efficientnet_b2-c3p1b16e20f14'
-MODEL_NAME = "efficientnet_b2"
+OUTPUT_DIR = 'rsna24-data/xception41-c3p1b16e20f14'
+MODEL_NAME = "xception41"
 
 N_WORKERS = math.floor(os.cpu_count()/2) + 1
 USE_AMP = True
@@ -35,6 +35,7 @@ IN_CHANS = 3
 
 BATCH_SIZE = 32
 device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
+autocast = torch.cuda.amp.autocast(enabled=USE_AMP, dtype=torch.half)
 
 sample_sub = pd.read_csv(f'{rd}/sample_submission.csv')
 LABELS = list(sample_sub.columns[1:])
@@ -53,6 +54,24 @@ LEVELS = [
     'l4_l5',
     'l5_s1',
 ]
+
+plane_conditions = {
+    "Sagittal T2/STIR": ["spinal_canal_stenosis"],
+    "Sagittal T1": ["left_neural_foraminal_narrowing", "right_neural_foraminal_narrowing"],
+    "Axial T2": ["left_subarticular_stenosis", "right_subarticular_stenosis"]
+}
+levels = ["l1_l2", "l2_l3", "l3_l4", "l4_l5", "l5_s1"]
+row_names = {
+    "Sagittal T2/STIR": [],
+    "Sagittal T1": [],
+    "Axial T2": []
+}
+for k in plane_conditions:
+    for p in plane_conditions[k]:
+        for label in levels:
+            row_names[k].append(f"{p}_{label}")
+
+labels = ["row_id", "normal_mild", "moderate", "severe"]
 
 
 def load_dicom(path):
@@ -205,13 +224,12 @@ class RSNA24Model(nn.Module):
             num_classes=n_classes,
             global_pool='avg'
         )
+        # print(torchinfo.summary(self.model, (IN_CHANS, *IMG_SIZE)))
+        print(f"Params: {(torch.nn.utils.parameters_to_vector(self.model.parameters()).numel()/1000000):.2f}M")
 
     def forward(self, x):
         y = self.model(x)
         return y
-
-
-autocast = torch.cuda.amp.autocast(enabled=USE_AMP, dtype=torch.half)
 
 
 def get_model_output(data, path, n_classes, image_dir, model_name):
@@ -239,25 +257,6 @@ def get_model_output(data, path, n_classes, image_dir, model_name):
     y_preds = np.concatenate(y_preds, axis=0)
     data["preds"] = y_preds.tolist()
     return data
-
-
-plane_conditions = {
-    "Sagittal T2/STIR": ["spinal_canal_stenosis"],
-    "Sagittal T1": ["left_neural_foraminal_narrowing", "right_neural_foraminal_narrowing"],
-    "Axial T2": ["left_subarticular_stenosis", "right_subarticular_stenosis"]
-}
-levels = ["l1_l2", "l2_l3", "l3_l4", "l4_l5", "l5_s1"]
-row_names = {
-    "Sagittal T2/STIR": [],
-    "Sagittal T1": [],
-    "Axial T2": []
-}
-for k in plane_conditions:
-    for p in plane_conditions[k]:
-        for label in levels:
-            row_names[k].append(f"{p}_{label}")
-
-labels = ["row_id", "normal_mild", "moderate", "severe"]
 
 
 def apply(x):

@@ -60,9 +60,18 @@ def get_full_label():
     return full_labels
 
 
+def balance_dataset(data):
+    g = data.groupby(["plane", "condition", "level", "label"])
+    g = g.apply(lambda x: x.sample(250, replace=len(x) <= 250).reset_index(drop=True)).reset_index(drop=True)
+    data = g.apply(lambda row: data.loc[(data.study_id == row.study_id) & (data.series_id == row.series_id) & (data.instance_number == row.instance_number)], axis=1).tolist()
+    data = pd.concat(data, ignore_index=True)
+    data.drop_duplicates(subset=["study_id", "series_id", "instance_number", "condition", "level", "label"], keep="first", inplace=True)
+    return data
+
+
 def read_train_csv(data_path):
-    if os.path.exists(data_path / "temp_train.csv") and os.path.exists(data_path / "temp_train_solution.csv"):
-        return pd.read_csv(data_path / "temp_train.csv"), pd.read_csv(data_path / "temp_train_solution.csv")
+    if os.path.exists(data_path / "temp_train.csv") and os.path.exists(data_path / "temp_train_solution.csv") and os.path.exists(data_path / "temp_train_balanced.csv"):
+        return pd.read_csv(data_path / "temp_train.csv"), pd.read_csv(data_path / "temp_train_solution.csv"), pd.read_csv(data_path / "temp_train_balanced.csv")
 
     train_main = pd.read_csv(data_path / "train.csv")
 
@@ -98,7 +107,11 @@ def read_train_csv(data_path):
     )
     train_label_coordinates.to_csv(data_path / "temp_train.csv", index=False)
 
-    return train_label_coordinates, solution
+    train_label_coordinates = pd.read_csv(data_path / "temp_train.csv")
+    balanced = balance_dataset(train_label_coordinates)
+    balanced.to_csv(data_path / "temp_train_balanced.csv", index=False)
+
+    return train_label_coordinates, solution, balanced
 
 
 def train_transform(aug_prob=0.75):
@@ -166,13 +179,6 @@ def process_train_csv(train):
     }).reset_index(drop=False)
 
     return sagittal_t2, sagittal_t1, axial_t2
-
-
-def balance(data):
-    g = data.groupby(["plane", "condition", "level", "label"])
-    g = g.apply(lambda x: x.sample(250, replace=len(x) <= 250).reset_index(drop=True))
-    data = g.reset_index(drop=True)
-    return data
 
 
 class RSNA24DatasetBase(Dataset):

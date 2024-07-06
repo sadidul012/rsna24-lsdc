@@ -64,7 +64,7 @@ def test(df, solution, model_location):
 
 
 def main():
-    _train, _solution = read_train_csv(DATA_PATH)
+    _train, _solution, _ = read_train_csv(DATA_PATH)
     _sagittal_t2, _sagittal_t1, _axial_t2 = process_train_csv(_train)
 
     test(
