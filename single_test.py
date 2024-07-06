@@ -5,7 +5,7 @@ from sklearn.model_selection import KFold
 from single_inference import prepare_submission
 from score import score
 from single_dataset import read_train_csv, DATA_PATH, process_train_csv
-from single_train import N_FOLDS, SEED, OUTPUT_DIR
+from single_train import N_FOLDS, SEED, OUTPUT_DIR, MODEL_NAME
 
 
 def test(df, solution, model_location):
@@ -33,7 +33,8 @@ def test(df, solution, model_location):
             DATA_PATH / f"train_images/",
             model_location + f'/sagittal_t2-best_wll_model_fold-{fold}.pt',
             model_location + f'/sagittal_t1-best_wll_model_fold-{fold}.pt',
-            model_location + f'/axial_t2-best_wll_model_fold-{fold}.pt'
+            model_location + f'/axial_t2-best_wll_model_fold-{fold}.pt',
+            MODEL_NAME
         )
 
         fold_sol = fold_sol[["row_id", "normal_mild", "moderate", "severe", "sample_weight"]].sort_values(by="row_id").reset_index(drop=True)
@@ -62,8 +63,7 @@ def test(df, solution, model_location):
         )
 
 
-if __name__ == '__main__':
-    PRETRAINED = True
+def main():
     _train, _solution = read_train_csv(DATA_PATH)
     _sagittal_t2, _sagittal_t1, _axial_t2 = process_train_csv(_train)
 
@@ -72,3 +72,7 @@ if __name__ == '__main__':
         _solution,
         OUTPUT_DIR
     )
+
+
+if __name__ == '__main__':
+    main()

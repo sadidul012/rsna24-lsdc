@@ -23,8 +23,8 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 
 rd = '/mnt/Cache/rsna-2024-lumbar-spine-degenerative-classification'
-OUTPUT_DIR = 'rsna24-data-new/rsna24-3-efficientnet_b3-5'
-MODEL_NAME = "efficientnet_b3"
+OUTPUT_DIR = 'rsna24-data/efficientnet_b2-c3p1b16e20f14'
+MODEL_NAME = "efficientnet_b2"
 
 N_WORKERS = math.floor(os.cpu_count()/2) + 1
 USE_AMP = True
@@ -214,8 +214,8 @@ class RSNA24Model(nn.Module):
 autocast = torch.cuda.amp.autocast(enabled=USE_AMP, dtype=torch.half)
 
 
-def get_model_output(data, path, n_classes, image_dir):
-    model = RSNA24Model(MODEL_NAME, IN_CHANS, n_classes, pretrained=False)
+def get_model_output(data, path, n_classes, image_dir, model_name):
+    model = RSNA24Model(model_name, IN_CHANS, n_classes, pretrained=False)
     model.load_state_dict(torch.load(path))
     model.eval()
     model.half()
@@ -307,7 +307,7 @@ def instance_image_path(x, image_dir):
     ]
 
 
-def prepare_submission(dataset, image_dir, sagittal_model_t2, sagittal_model_t1, axial_model_t1):
+def prepare_submission(dataset, image_dir, sagittal_model_t2, sagittal_model_t1, axial_model_t1, model_name):
     # TODO utilize all data
     dataset = dataset.drop_duplicates(subset=["study_id", "series_description"])
     dataset = dataset.groupby("study_id").apply(lambda x: inject_series_description(x)).reset_index(drop=True)
@@ -318,7 +318,8 @@ def prepare_submission(dataset, image_dir, sagittal_model_t2, sagittal_model_t1,
         dataset.loc[dataset.series_description == "Sagittal T2/STIR"],
         sagittal_model_t2,
         15,
-        image_dir
+        image_dir,
+        model_name
     )
     sagittal_t2 = sagittal_t2.groupby(by=["study_id", "series_id"]).apply(lambda x: apply(x)).reset_index(drop=True)
 
@@ -326,7 +327,8 @@ def prepare_submission(dataset, image_dir, sagittal_model_t2, sagittal_model_t1,
         dataset.loc[dataset.series_description == "Sagittal T1"],
         sagittal_model_t1,
         30,
-        image_dir
+        image_dir,
+        model_name
     )
     sagittal_t1 = sagittal_t1.groupby(by=["study_id", "series_id"]).apply(lambda x: apply(x)).reset_index(drop=True)
 
@@ -334,7 +336,8 @@ def prepare_submission(dataset, image_dir, sagittal_model_t2, sagittal_model_t1,
         dataset.loc[dataset.series_description == "Axial T2"],
         axial_model_t1,
         6,
-        image_dir
+        image_dir,
+        model_name
     )
     axial_t2 = axial_t2.groupby(by=["study_id", "series_id"]).apply(lambda x: apply(x)).reset_index(drop=True)
     sub = pd.concat([sagittal_t1, axial_t2, sagittal_t2]).sort_values("row_id")
@@ -349,9 +352,10 @@ if __name__ == '__main__':
     submission = prepare_submission(
         df,
         f"{rd}/test_images/",
-        OUTPUT_DIR + '/sagittal_t2-best_wll_model_fold-4.pt',
-        OUTPUT_DIR + '/sagittal_t1-best_wll_model_fold-4.pt',
-        OUTPUT_DIR + '/axial_t2-best_wll_model_fold-4.pt'
+        OUTPUT_DIR + '/sagittal_t2-best_wll_model_fold-0.pt',
+        OUTPUT_DIR + '/sagittal_t1-best_wll_model_fold-0.pt',
+        OUTPUT_DIR + '/axial_t2-best_wll_model_fold-0.pt',
+        MODEL_NAME
     )
     print(submission.shape)
     submission.to_csv('submission.csv', index=False)

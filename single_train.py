@@ -1,6 +1,7 @@
 import math
 import os
 import random
+import time
 from collections import OrderedDict
 
 import numpy as np
@@ -46,14 +47,14 @@ from single_dataset import read_train_csv, DATA_PATH, process_train_csv, RSNA24D
 # EfficientNet
 #   EfficientNet-B0: ~5.3 million parameters
 #   EfficientNet-B1: ~7.8 million parameters
-#   EfficientNet-B2: ~9.2 million parameters
-#   EfficientNet-B3: ~12 million parameters
+#   EfficientNet-B2: ~9.2 million parameters - 0.771 (P1)
+#   EfficientNet-B3: ~12 million parameters - 0.770 (P1), 0.883 (P0)
 #   EfficientNet-B4: ~19 million parameters
 #   EfficientNet-B5: ~30 million parameters
 #   EfficientNet-B6: ~43 million parameters
 #   EfficientNet-B7: ~66 million parameters
 
-MODEL_NAME = "efficientnet_b3"
+MODEL_NAME = "efficientnet_b2"
 
 rd = '/mnt/Cache/rsna-2024-lumbar-spine-degenerative-classification'
 DEBUG = False
@@ -83,7 +84,7 @@ LR = 1e-4
 WD = 1e-2
 AUG = True
 NUMBER_OF_SAMPLES = -1 if not DEBUG else -1
-MODEL_SLUG = f"{MODEL_NAME}-C{IN_CHANS}P{1 if PRETRAINED else 0}B{BATCH_SIZE}E{EPOCHS}F{N_FOLDS}"
+MODEL_SLUG = f"{MODEL_NAME}-c{IN_CHANS}p{1 if PRETRAINED else 0}b{BATCH_SIZE}e{EPOCHS}f{N_FOLDS}"
 OUTPUT_FOLDER = "rsna24-data"
 OUTPUT_DIR = f'{OUTPUT_FOLDER}/{MODEL_SLUG}'
 os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -154,9 +155,6 @@ def train(df, plane, n_classes):
         best_wll = 1200
         es_step = 0
         log_dir = f"{OUTPUT_FOLDER}/logs" + f"/{MODEL_SLUG}/F{fold}"
-
-        if os.path.exists(log_dir):
-            log_dir = log_dir + f"+1"
 
         writer = SummaryWriter(log_dir)
         for epoch in range(1, EPOCHS + 1):
@@ -271,9 +269,14 @@ def train(df, plane, n_classes):
 
 
 if __name__ == '__main__':
+    from datetime import timedelta
+    start = time.time()
+
     _train, _solution = read_train_csv(DATA_PATH)
     _sagittal_t2, _sagittal_t1, _axial_t2 = process_train_csv(_train)
 
     train(_sagittal_t2, "sagittal_t2", 15)
     train(_sagittal_t1, "sagittal_t1", 30)
     train(_axial_t2, "axial_t2", 6)
+
+    print(f"Time taken: {timedelta(seconds=time.time() - start)}")
