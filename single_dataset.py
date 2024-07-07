@@ -130,7 +130,7 @@ def train_transform(aug_prob=0.75):
     ])
 
 
-def process_train_csv(train):
+def process_train_csv(train, additional_columns=False):
     train.loc[(train.plane == "Sagittal T1") & (train.condition == "Spinal Canal Stenosis"), "plane"] = "Sagittal T2/STIR"
     full_labels = get_full_label()
     sagittal_t2 = train.loc[train.plane == "Sagittal T2/STIR"]
@@ -138,45 +138,37 @@ def process_train_csv(train):
     sagittal_t2.loc[:, "full_label"] = sagittal_t2.apply(
         lambda x: (x.condition + "_" + x.level + "_" + x.label).replace("/", "_").replace(" ", "_").lower(), axis=1)
     sagittal_t2.loc[:, "full_label"] = sagittal_t2["full_label"].apply(lambda x: full_labels["Sagittal T2/STIR"][x])
-    sagittal_t2 = sagittal_t2.groupby(["study_id", "series_id", "instance_number"]).agg({
-        # "condition": pd.Series.to_list,
-        # "level": "first",
-        # "x": pd.Series.to_list,
-        # "y": pd.Series.to_list,
-        "plane": "first",
-        # "label": pd.Series.to_list,
-        "full_label": pd.Series.to_list
-    }).reset_index(drop=False)
+    if additional_columns:
+        agg = {
+            # "condition": pd.Series.to_list,
+            "level": "first",
+            # "x": pd.Series.to_list,
+            # "y": pd.Series.to_list,
+            "plane": "first",
+            # "label": pd.Series.to_list,
+            "full_label": pd.Series.to_list
+        }
+    else:
+        agg = {
+            "plane": "first",
+            "full_label": pd.Series.to_list
+        }
+
+    sagittal_t2 = sagittal_t2.groupby(["study_id", "series_id", "instance_number"]).agg(agg).reset_index(drop=False)
 
     sagittal_t1 = train.loc[train.plane == "Sagittal T1"]
     sagittal_t1.loc[:, "label"] = sagittal_t1["label"].fillna("Normal/Mild")
     sagittal_t1.loc[:, "full_label"] = sagittal_t1.apply(
         lambda x: (x.condition + "_" + x.level + "_" + x.label).replace("/", "_").replace(" ", "_").lower(), axis=1)
     sagittal_t1.loc[:, "full_label"] = sagittal_t1["full_label"].apply(lambda x: full_labels["Sagittal T1"][x])
-    sagittal_t1 = sagittal_t1.groupby(["study_id", "series_id", "instance_number"]).agg({
-        # "condition": pd.Series.to_list,
-        # "level": "first",
-        # "x": pd.Series.to_list,
-        # "y": pd.Series.to_list,
-        "plane": "first",
-        # "label": pd.Series.to_list,
-        "full_label": pd.Series.to_list
-    }).reset_index(drop=False)
+    sagittal_t1 = sagittal_t1.groupby(["study_id", "series_id", "instance_number"]).agg(agg).reset_index(drop=False)
 
     axial_t2 = train.loc[train.plane == "Axial T2"]
     axial_t2.loc[:, "label"] = axial_t2["label"].fillna("Normal/Mild")
     axial_t2.loc[:, "full_label"] = axial_t2.apply(
         lambda x: (x.condition + "_" + x.label).replace("/", "_").replace(" ", "_").lower(), axis=1)
     axial_t2.loc[:, "full_label"] = axial_t2["full_label"].apply(lambda x: full_labels["Axial T2"][x])
-    axial_t2 = axial_t2.groupby(["study_id", "series_id", "instance_number"]).agg({
-        # "condition": pd.Series.to_list,
-        # "level": "first",
-        # "x": pd.Series.to_list,
-        # "y": pd.Series.to_list,
-        "plane": "first",
-        # "label": pd.Series.to_list,
-        "full_label": pd.Series.to_list
-    }).reset_index(drop=False)
+    axial_t2 = axial_t2.groupby(["study_id", "series_id", "instance_number"]).agg(agg).reset_index(drop=False)
 
     return sagittal_t2, sagittal_t1, axial_t2
 

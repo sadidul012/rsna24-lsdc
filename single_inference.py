@@ -23,7 +23,7 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 
 rd = '/mnt/Cache/rsna-2024-lumbar-spine-degenerative-classification'
-OUTPUT_DIR = 'rsna24-data/xception41-c3p1b16e20f14'
+OUTPUT_DIR = 'rsna24-data/models/xception41-c3p1b16e20f14'
 MODEL_NAME = "xception41"
 
 N_WORKERS = math.floor(os.cpu_count()/2) + 1
@@ -320,7 +320,6 @@ def prepare_submission(dataset, image_dir, sagittal_model_t2, sagittal_model_t1,
         image_dir,
         model_name
     )
-    sagittal_t2 = sagittal_t2.groupby(by=["study_id", "series_id"]).apply(lambda x: apply(x)).reset_index(drop=True)
 
     sagittal_t1 = get_model_output(
         dataset.loc[dataset.series_description == "Sagittal T1"],
@@ -329,7 +328,6 @@ def prepare_submission(dataset, image_dir, sagittal_model_t2, sagittal_model_t1,
         image_dir,
         model_name
     )
-    sagittal_t1 = sagittal_t1.groupby(by=["study_id", "series_id"]).apply(lambda x: apply(x)).reset_index(drop=True)
 
     axial_t2 = get_model_output(
         dataset.loc[dataset.series_description == "Axial T2"],
@@ -338,7 +336,14 @@ def prepare_submission(dataset, image_dir, sagittal_model_t2, sagittal_model_t1,
         image_dir,
         model_name
     )
+    sagittal_t2.to_csv("rsna24-data/saggittal_t2.csv", index=False)
+    sagittal_t1.to_csv("rsna24-data/sagittal_t1.csv", index=False)
+    axial_t2.to_csv("rsna24-data/axial_t2.csv", index=False)
+
+    sagittal_t2 = sagittal_t2.groupby(by=["study_id", "series_id"]).apply(lambda x: apply(x)).reset_index(drop=True)
+    sagittal_t1 = sagittal_t1.groupby(by=["study_id", "series_id"]).apply(lambda x: apply(x)).reset_index(drop=True)
     axial_t2 = axial_t2.groupby(by=["study_id", "series_id"]).apply(lambda x: apply(x)).reset_index(drop=True)
+
     sub = pd.concat([sagittal_t1, axial_t2, sagittal_t2]).sort_values("row_id")
     # sub = sub.groupby("study_id").apply(lambda x: x).reset_index(drop=True)[["row_id", "normal_mild", "moderate", "severe"]]
     # print(sub.to_string())

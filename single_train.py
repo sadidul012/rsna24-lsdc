@@ -19,7 +19,7 @@ from single_dataset import read_train_csv, DATA_PATH, process_train_csv, RSNA24D
 
 # TODO train and compare pretraine=true and false
 # ResNet:
-#   ResNet-18: ~11.7 million parameters - 0.785 (P1)
+#   ResNet-18: ~11.7 million parameters - 0.785
 #   ResNet-34: ~21.8 million parameters
 #   ResNet-50: ~25.6 million parameters
 #   ResNet-101: ~44.5 million parameters
@@ -31,10 +31,10 @@ from single_dataset import read_train_csv, DATA_PATH, process_train_csv, RSNA24D
 #   Inception v1 (GoogleNet): ~6.8 million parameters
 #   Inception v3: ~23.8 million parameters
 # DenseNet:
-#   DenseNet-121: ~8 million parameters - 0.762 (P1)
-#   DenseNet-161: ~26 million parameters - 0.781 (P1)
-#   DenseNet-169: ~14 million parameter - 0.715 (P1) - 0.78 (S)
-#   DenseNet-201: ~20 million parameters - 0.734 (P1)
+#   DenseNet-121: ~8 million parameters - 0.762
+#   DenseNet-161: ~26 million parameters - 0.781
+#   DenseNet-169: ~14 million parameter - 0.715 - 0.78 (S)
+#   DenseNet-201: ~20 million parameters - 0.734
 #   DenseNet-264: ~33 million parameters - no pretrained
 #   MobileNets (parameters can vary significantly with changes in alpha and resolution multipliers):
 #   MobileNetV1 (1.0 224): ~4.2 million parameters
@@ -44,26 +44,26 @@ from single_dataset import read_train_csv, DATA_PATH, process_train_csv, RSNA24D
 #   Vision Transformers (ViT):
 #   ViT-B/16 (base model with patch size 16x16): ~86 million parameters
 # Xception:
-#   Xception-41: ~24.95 million parameters - 0.723 (P1) - 0.76 (S)
+#   Xception-41: ~24.95 million parameters - 0.723 - 0.76 (S), DB 0.785
 #   Xception-65: ~37.90 million parameters
 #   Xception-71: ~40.32 million parameters
 # EfficientNet
-#   EfficientNet-B0: ~5.3 million parameters - 0.762 (P1)
-#   EfficientNet-B1: ~7.8 million parameters - 0.758 (P1)
-#   EfficientNet-B2: ~9.2 million parameters - 0.771 (P1)
-#   EfficientNet-B3: ~12 million parameters - 0.770 (P1), 0.883 (P0)
-#   EfficientNet-B4: ~17 million parameters - 0.759 (P1)
+#   EfficientNet-B0: ~5.3 million parameters - 0.762
+#   EfficientNet-B1: ~7.8 million parameters - 0.758
+#   EfficientNet-B2: ~9.2 million parameters - 0.771
+#   EfficientNet-B3: ~12 million parameters - 0.770, 0.883 (P0)
+#   EfficientNet-B4: ~17 million parameters - 0.759
 #   EfficientNet-B5: ~30 million parameters
 #   EfficientNet-B6: ~43 million parameters
 #   EfficientNet-B7: ~66 million parameters
 
 # timm/levit_256.fb_dist_in1k - 17.88M
-# timm/rexnet_150.nav_in1k - 7.84M - 0.757 (P1)
-# timm/regnety_016.tv2_in1k - 10.33M - 0.784 (P1)
-# timm/tinynet_e.in1k - 2M - 0.765
+# timm/rexnet_150.nav_in1k - 7.84M - 0.757
+# timm/regnety_016.tv2_in1k - 10.33M - 0.784
+# timm/tinynet_e.in1k - 2M - 0.765 - DB 0.811
 
 
-MODEL_NAME = "timm/tinynet_e.in1k"
+MODEL_NAME = "xception41"
 
 rd = '/mnt/Cache/rsna-2024-lumbar-spine-degenerative-classification'
 DEBUG = False
@@ -89,7 +89,7 @@ AUG_PROB = 0.75
 N_FOLDS = 14 if not DEBUG else 2
 EPOCHS = 20 if not DEBUG else 2
 
-LR = 1e-4
+LR = 1e-2
 WD = 1e-2
 AUG = True
 
@@ -100,7 +100,7 @@ except IndexError:
     MODEL_SLUG = f"{MODEL_NAME}-{MODEL_SLUG}"
 
 OUTPUT_FOLDER = "rsna24-data"
-OUTPUT_DIR = f'{OUTPUT_FOLDER}/{MODEL_SLUG}'
+OUTPUT_DIR = f'{OUTPUT_FOLDER}/models_db/{MODEL_SLUG}'
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 
