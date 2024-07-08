@@ -59,7 +59,8 @@ def test(df, solution, model_location):
             model_location + f'/sagittal_t2-best_wll_model_fold-{fold}.pt',
             model_location + f'/sagittal_t1-best_wll_model_fold-{fold}.pt',
             model_location + f'/axial_t2-best_wll_model_fold-{fold}.pt',
-            MODEL_NAME
+            MODEL_NAME,
+            method="activation"
         )
         fold_sol = fold_sol[["row_id", "normal_mild", "moderate", "severe", "sample_weight"]]
 

@@ -2,9 +2,8 @@ import pandas as pd
 
 from single_dataset import DATA_PATH
 from single_inference import inject_series_description, instance_image_path, get_model_output
+from single_test import OUTPUT_DIR, MODEL_NAME
 
-OUTPUT_DIR = "rsna24-data/models/densenet169-c3p1b16e20f14"
-MODEL_NAME = "densenet169"
 image_dir = DATA_PATH / f"train_images/"
 dataset = pd.read_csv(DATA_PATH / "train_series_descriptions.csv")
 

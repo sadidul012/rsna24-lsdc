@@ -1,6 +1,8 @@
+import ast
 import math
 import warnings
 
+import cv2
 import torch
 from pandas.errors import SettingWithCopyWarning
 from torch import nn
@@ -29,6 +31,7 @@ MODEL_NAME = "xception41"
 N_WORKERS = math.floor(os.cpu_count()/2) + 1
 USE_AMP = True
 SEED = 8620
+N_LABELS = 25
 
 IMG_SIZE = [512, 512]
 IN_CHANS = 3
@@ -259,7 +262,7 @@ def get_model_output(data, path, n_classes, image_dir, model_name):
     return data
 
 
-def apply(x):
+def apply_average(x):
     preds = []
     if x.iloc[0].series_description == "Sagittal T2/STIR":
         preds = np.array([np.array(y) for y in x["preds"].values]).mean(0)
@@ -289,6 +292,84 @@ def apply(x):
     return result
 
 
+def average_method(sagittal_t2, sagittal_t1, axial_t2):
+    sagittal_t2 = sagittal_t2.groupby(by=["study_id", "series_id"]).apply(lambda x: apply_average(x)).reset_index(drop=True)
+    sagittal_t1 = sagittal_t1.groupby(by=["study_id", "series_id"]).apply(lambda x: apply_average(x)).reset_index(drop=True)
+    axial_t2 = axial_t2.groupby(by=["study_id", "series_id"]).apply(lambda x: apply_average(x)).reset_index(drop=True)
+
+    return pd.concat([sagittal_t1, axial_t2, sagittal_t2]).sort_values("row_id")
+
+
+class RSNA24DatasetActivation(Dataset):
+    def __init__(self, st_ids, sagittal_t2_feat, sagittal_t1_feat, axial_t2_feat):
+        self.sagittal_t2_feat = sagittal_t2_feat
+        self.sagittal_t1_feat = sagittal_t1_feat
+        self.axial_t2_feat = axial_t2_feat
+
+        self.study_ids = st_ids
+
+        self.image_size = (240, 240)
+        self.label = "full_label"
+
+    def __len__(self):
+        return len(self.study_ids)
+
+    def create_image(self, data):
+        data = data.sort_values("instance_number")
+        data = [np.array(i) for i in data.preds.values]
+        return cv2.resize(np.array(data), self.image_size, interpolation=cv2.INTER_AREA).transpose((2, 0, 1))
+
+    def __getitem__(self, i):
+        study_id = self.study_ids[i]
+        xs2 = self.create_image(self.sagittal_t2_feat.loc[self.sagittal_t2_feat.study_id == study_id])
+        xs1 = self.create_image(self.sagittal_t1_feat.loc[self.sagittal_t1_feat.study_id == study_id])
+        xt1 = self.create_image(self.axial_t2_feat.loc[self.axial_t2_feat.study_id == study_id])
+        feat = np.vstack((xs2, xs1, xt1))
+        return feat.astype(np.float32), study_id
+
+
+def activation_method(dataset, sagittal_t2, sagittal_t1, axial_t2, n_classes=75):
+    test_ds = RSNA24DatasetActivation(
+        dataset.study_id.unique(),
+        sagittal_t2,
+        sagittal_t1,
+        axial_t2,
+    )
+    test_dl = DataLoader(
+        test_ds, batch_size=1, shuffle=False, pin_memory=False, drop_last=False, num_workers=N_WORKERS
+    )
+    model = RSNA24Model("tinynet_e.in1k", in_c=9, n_classes=n_classes, pretrained=False)
+    path = "rsna24-data/models/tinynet_e.in1k-A-c9p1b8e20f14/Activation-best_wll_model_fold-0.pt"
+    model.load_state_dict(torch.load(path))
+    model.eval()
+    model.half()
+    model.to(device)
+
+    y_preds = []
+    row_names = []
+    with tqdm.tqdm(test_dl, leave=True) as pbar:
+        with torch.no_grad():
+            for idx, (x, study_id) in enumerate(pbar):
+                x = x.to(device)
+                for cond in CONDITIONS:
+                    for level in LEVELS:
+                        row_names.append(str(study_id[0].item()) + '_' + cond + '_' + level)
+
+                pred_per_study = np.zeros((25, 3))
+                with autocast:
+                    y = model(x)[0]
+                    for col in range(N_LABELS):
+                        pred = y[col * 3:col * 3 + 3]
+                        y_pred = pred.float().softmax(0).cpu().numpy()
+                        pred_per_study[col] += y_pred
+                y_preds.append(pred_per_study)
+    y_preds = np.concatenate(y_preds, axis=0)
+    sub = pd.DataFrame()
+    sub['row_id'] = row_names
+    sub[LABELS] = y_preds
+    return sub
+
+
 def inject_series_description(x):
     rows = pd.DataFrame([
         [x.iloc[0].study_id, -100, "Axial T2"],
@@ -306,7 +387,7 @@ def instance_image_path(x, image_dir):
     ]
 
 
-def prepare_submission(dataset, image_dir, sagittal_model_t2, sagittal_model_t1, axial_model_t1, model_name):
+def prepare_submission(dataset, image_dir, sagittal_model_t2, sagittal_model_t1, axial_model_t1, model_name, method="average"):
     # TODO utilize all data
     dataset = dataset.drop_duplicates(subset=["study_id", "series_description"])
     dataset = dataset.groupby("study_id").apply(lambda x: inject_series_description(x)).reset_index(drop=True)
@@ -336,21 +417,14 @@ def prepare_submission(dataset, image_dir, sagittal_model_t2, sagittal_model_t1,
         image_dir,
         model_name
     )
-    sagittal_t2.to_csv("rsna24-data/saggittal_t2.csv", index=False)
-    sagittal_t1.to_csv("rsna24-data/sagittal_t1.csv", index=False)
-    axial_t2.to_csv("rsna24-data/axial_t2.csv", index=False)
+    if method == "activation":
+        sub = activation_method(dataset, sagittal_t2, sagittal_t1, axial_t2)
+    else:
+        sub = average_method(sagittal_t2, sagittal_t1, axial_t2)
 
-    sagittal_t2 = sagittal_t2.groupby(by=["study_id", "series_id"]).apply(lambda x: apply(x)).reset_index(drop=True)
-    sagittal_t1 = sagittal_t1.groupby(by=["study_id", "series_id"]).apply(lambda x: apply(x)).reset_index(drop=True)
-    axial_t2 = axial_t2.groupby(by=["study_id", "series_id"]).apply(lambda x: apply(x)).reset_index(drop=True)
-
-    sub = pd.concat([sagittal_t1, axial_t2, sagittal_t2]).sort_values("row_id")
-    # sub = sub.groupby("study_id").apply(lambda x: x).reset_index(drop=True)[["row_id", "normal_mild", "moderate", "severe"]]
-    # print(sub.to_string())
     return sub.reset_index(drop=True)
 
 
-# 2.3338262493296744
 if __name__ == '__main__':
     df = pd.read_csv(f'{rd}/test_series_descriptions.csv')
     submission = prepare_submission(
