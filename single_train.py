@@ -66,6 +66,14 @@ from single_dataset import read_train_csv, DATA_PATH, process_train_csv, RSNA24D
 
 rd = '/mnt/Cache/rsna-2024-lumbar-spine-degenerative-classification'
 
+model_config = ModelConfig()
+model_config.IMG_SIZE = [512, 512]
+model_config.IN_CHANS = 3
+# model_config.MODEL_NAME = "xception41"
+model_config.MODEL_NAME = "xception41"
+print("Model name:", model_config.MODEL_NAME)
+OUTPUT_FOLDER = "rsna24-data"
+
 DEBUG = False
 PRETRAINED = True
 RETRAIN = False
@@ -87,22 +95,13 @@ LR = 1e-2
 WD = 1e-2
 AUG = True
 
-model_config = ModelConfig()
-model_config.IMG_SIZE = [512, 512]
-model_config.IN_CHANS = 3
-# model_config.MODEL_NAME = "xception41"
-model_config.MODEL_NAME = "xception41"
-print("Model name:", model_config.MODEL_NAME)
-
-OUTPUT_FOLDER = "rsna24-data"
-MODEL_SLUG = F"c{model_config.IN_CHANS}p{1 if PRETRAINED else 0}b{BATCH_SIZE}e{EPOCHS}f{N_FOLDS}"
+MODEL_SLUG = F"DB-c{model_config.IN_CHANS}p{1 if PRETRAINED else 0}b{BATCH_SIZE}e{EPOCHS}f{N_FOLDS}"
 try:
     MODEL_SLUG = f"{model_config.MODEL_NAME.split("/")[1]}-{MODEL_SLUG}"
 except IndexError:
     MODEL_SLUG = f"{model_config.MODEL_NAME}-{MODEL_SLUG}"
 
-model_config.MODEL_PATH = f'{OUTPUT_FOLDER}/models/{MODEL_SLUG}'
-os.makedirs(model_config.MODEL_PATH, exist_ok=True)
+model_config.MODEL_PATH = f'{OUTPUT_FOLDER}/models_db/{MODEL_SLUG}'
 
 
 def set_random_seed(seed: int = 8620, deterministic: bool = False):
@@ -253,6 +252,7 @@ def train(df, df_balanced, plane, n_classes):
                         best_wll = val_wll
                         name = f'{plane}-best_wll_model_fold-{fold}'
                         model_config.MODEL_FILENAME = f"{name}.pt"
+                        os.makedirs(model_config.MODEL_PATH, exist_ok=True)
                         torch.save(model.state_dict(), f"{model_config.MODEL_PATH}/{model_config.MODEL_FILENAME}")
                         model_config.save(f"{model_config.MODEL_PATH}/{name}.json")
 

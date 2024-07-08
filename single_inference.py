@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 from glob import glob
 import tqdm
-from single_dataset import RSNA24DatasetInference, RSNA24DatasetActivation
+from single_inference_dataset import RSNA24DatasetInference, RSNA24DatasetActivation
 from single_model import RSNA24Model
 
 from config import ModelConfig

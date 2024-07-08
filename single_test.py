@@ -10,7 +10,6 @@ from single_dataset import read_train_csv, DATA_PATH, process_train_csv
 from single_train import N_FOLDS, SEED, model_config
 
 
-# SEED = 42
 sagittal_t2_model_config = ModelConfig(model_config.MODEL_PATH + "/sagittal_t2-best_wll_model_fold-0.json")
 sagittal_t1_model_config = ModelConfig(model_config.MODEL_PATH + "/sagittal_t1-best_wll_model_fold-0.json")
 axial_t2_model_config = ModelConfig(model_config.MODEL_PATH + "/axial_t2-best_wll_model_fold-0.json")
@@ -21,7 +20,8 @@ axial_t2_model_config = ModelConfig(model_config.MODEL_PATH + "/axial_t2-best_wl
 activation_model_config = ModelConfig("rsna24-data/models/rexnet_150.nav_in1k-A-c9p1b16e20f14/Activation-best_wll_model_fold-0.json")
 
 # RESULT_DIRECTORY = activation_model_config.MODEL_PATH
-RESULT_DIRECTORY = sagittal_t2_model_config.MODEL_PATH
+# RESULT_DIRECTORY = sagittal_t2_model_config.MODEL_PATH
+RESULT_DIRECTORY = None
 METHOD = "average"
 # METHOD = "activation"
 
@@ -41,6 +41,13 @@ def calculate_accuracy(fold_sol, sub, condition):
     )
 
 
+def get_sub(val_study_id):
+    sub = pd.read_csv("/home/sadid-dl/PycharmProjects/RSNA-2024-Lumbar-Spine-Degenerative-Classification/submission.csv")
+    sub["study_id"] = sub.row_id.apply(lambda x: int(x.split("_")[0]))
+    sub = sub.loc[sub.study_id.isin(val_study_id)].reset_index(drop=True)[["row_id", "normal_mild", "moderate", "severe"]]
+    return sub
+
+
 def test(df, solution):
     skf = KFold(n_splits=N_FOLDS, shuffle=True, random_state=SEED)
     train_desc = pd.read_csv(DATA_PATH / "train_series_descriptions.csv")
@@ -50,8 +57,8 @@ def test(df, solution):
     study_ids = np.array(df.study_id.unique())
     scores = []
     for fold, (trn_idx, val_idx) in enumerate(skf.split(range(len(study_ids)))):
-        # if fold < 1:
-        #     continue
+        if fold != 0:
+            continue
         print(f"Test fold {fold}")
         print("train size", len(trn_idx), "test size", len(val_idx))
         # val_study_id = [3008676218, 2780132468, 2492114990]  # less folder
@@ -75,6 +82,7 @@ def test(df, solution):
             axial_t2_model_config,
             method=METHOD
         )
+        # sub = get_sub(val_study_id)
         fold_sol = fold_sol[["row_id", "normal_mild", "moderate", "severe", "sample_weight"]]
         print(sub.shape, fold_sol.shape)
         try:
@@ -89,6 +97,7 @@ def test(df, solution):
             precision = precision_score(y_tru, y_hat, average="weighted", sample_weight=fold_sol.sample_weight)
             cm = confusion_matrix(y_tru, y_hat)
             output = f"""
+####################################
 Fold: {fold} Score: {s:.2f}
 Accuracy {accuracy:.3f}
 Precision {precision:.3f}
@@ -116,8 +125,6 @@ neural_foraminal ######
         except Exception as e:
             print(e)
             print("scoring error")
-
-        break
 
     print("CV:", np.mean(scores))
     # with open(model_location + f"/result", "a+") as file:
