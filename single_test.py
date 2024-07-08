@@ -7,18 +7,23 @@ from config import ModelConfig
 from single_inference import prepare_submission
 from score import score
 from single_dataset import read_train_csv, DATA_PATH, process_train_csv
-from single_train import N_FOLDS, SEED
+from single_train import N_FOLDS, SEED, model_config
 
 
 # SEED = 42
-sagittal_t2_model_config = ModelConfig("rsna24-data/models_db/xception41-DB-c3p1b16e2f14/sagittal_t2-best_wll_model_fold-0.json")
-sagittal_t1_model_config = ModelConfig("rsna24-data/models_db/xception41-DB-c3p1b16e2f14/sagittal_t1-best_wll_model_fold-0.json")
-axial_t2_model_config = ModelConfig("rsna24-data/models_db/xception41-DB-c3p1b16e2f14/axial_t2-best_wll_model_fold-0.json")
+sagittal_t2_model_config = ModelConfig(model_config.MODEL_PATH + "/sagittal_t2-best_wll_model_fold-0.json")
+sagittal_t1_model_config = ModelConfig(model_config.MODEL_PATH + "/sagittal_t1-best_wll_model_fold-0.json")
+axial_t2_model_config = ModelConfig(model_config.MODEL_PATH + "/axial_t2-best_wll_model_fold-0.json")
+# sagittal_t2_model_config = ModelConfig("rsna24-data/models_db/xception41-DB-c3p1b16e2f14/sagittal_t2-best_wll_model_fold-0.json")
+# sagittal_t1_model_config = ModelConfig("rsna24-data/models_db/xception41-DB-c3p1b16e2f14/sagittal_t1-best_wll_model_fold-0.json")
+# axial_t2_model_config = ModelConfig("rsna24-data/models_db/xception41-DB-c3p1b16e2f14/axial_t2-best_wll_model_fold-0.json")
 
 activation_model_config = ModelConfig("rsna24-data/models/rexnet_150.nav_in1k-A-c9p1b16e20f14/Activation-best_wll_model_fold-0.json")
 
 # RESULT_DIRECTORY = activation_model_config.MODEL_PATH
 RESULT_DIRECTORY = sagittal_t2_model_config.MODEL_PATH
+METHOD = "average"
+# METHOD = "activation"
 
 
 def calculate_accuracy(fold_sol, sub, condition):
@@ -30,9 +35,9 @@ def calculate_accuracy(fold_sol, sub, condition):
 
     return (
         f"accuracy {accuracy_score(y_tru, y_hat)} \n"
-        f"normal c/w {cm[0][0] / (cm[1][0] + cm[2][0])} acc {cm[0][0] / len(y_tru[y_tru == 0])}\n"
-        f"moderate c/w {cm[1][1] / (cm[0][1] + cm[2][1])} acc {cm[1][1] / len(y_tru[y_tru == 1])} \n"
-        f"severe c/w {cm[2][2] / (cm[1][2] + cm[0][2])} acc {cm[2][2] / len(y_tru[y_tru == 2])}"
+        f"normal   c/w {cm[0][0] / (cm[1][0] + cm[2][0]):.3f} acc {cm[0][0] / len(y_tru[y_tru == 0]):.3f}\n"
+        f"moderate c/w {cm[1][1] / (cm[0][1] + cm[2][1]):.3f} acc {cm[1][1] / len(y_tru[y_tru == 1]):.3f} \n"
+        f"severe   c/w {cm[2][2] / (cm[1][2] + cm[0][2]):.3f} acc {cm[2][2] / len(y_tru[y_tru == 2]):.3f}"
     )
 
 
@@ -68,8 +73,7 @@ def test(df, solution):
             sagittal_t2_model_config,
             sagittal_t1_model_config,
             axial_t2_model_config,
-            method="average"
-            # method="activation"
+            method=METHOD
         )
         fold_sol = fold_sol[["row_id", "normal_mild", "moderate", "severe", "sample_weight"]]
         print(sub.shape, fold_sol.shape)
@@ -86,14 +90,14 @@ def test(df, solution):
             cm = confusion_matrix(y_tru, y_hat)
             output = f"""
 Fold: {fold} Score: {s:.2f}
-Accuracy {accuracy}
-Precision {precision}
+Accuracy {accuracy:.3f}
+Precision {precision:.3f}
 Confusion Matrix:
 {cm}
 
-normal correct vs wrong {cm[0][0] / (cm[1][0] + cm[2][0])}
-moderate correct vs wrong {cm[1][1] / (cm[0][1] + cm[2][1])}
-severe correct vs wrong {cm[2][2] / (cm[1][2] + cm[0][2])}
+normal correct vs wrong {cm[0][0] / (cm[1][0] + cm[2][0]):.3f}
+moderate correct vs wrong {cm[1][1] / (cm[0][1] + cm[2][1]):.3f}
+severe correct vs wrong {cm[2][2] / (cm[1][2] + cm[0][2]):.3f}
 
 spinal_canal ##########
 {calculate_accuracy(fold_sol, sub, spinal_canal)}
@@ -105,8 +109,9 @@ neural_foraminal ######
 {calculate_accuracy(fold_sol, sub, neural_foraminal)}
             """
             print(output)
-            with open(RESULT_DIRECTORY + f"/result", "w") as file:
-                file.write(output)
+            if RESULT_DIRECTORY is not None:
+                with open(RESULT_DIRECTORY + f"/result", "w") as file:
+                    file.write(output)
             scores.append(s)
         except Exception as e:
             print(e)

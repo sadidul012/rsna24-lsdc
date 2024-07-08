@@ -82,7 +82,7 @@ EARLY_STOPPING_EPOCH = 3
 
 AUG_PROB = 0.75
 N_FOLDS = 14 if not DEBUG else 2
-EPOCHS = 2 if not DEBUG else 2
+EPOCHS = 20 if not DEBUG else 2
 LR = 1e-2
 WD = 1e-2
 AUG = True
@@ -90,16 +90,18 @@ AUG = True
 model_config = ModelConfig()
 model_config.IMG_SIZE = [512, 512]
 model_config.IN_CHANS = 3
+# model_config.MODEL_NAME = "xception41"
 model_config.MODEL_NAME = "xception41"
+print("Model name:", model_config.MODEL_NAME)
 
-MODEL_SLUG = F"DB-c{model_config.IN_CHANS}p{1 if PRETRAINED else 0}b{BATCH_SIZE}e{EPOCHS}f{N_FOLDS}"
+OUTPUT_FOLDER = "rsna24-data"
+MODEL_SLUG = F"c{model_config.IN_CHANS}p{1 if PRETRAINED else 0}b{BATCH_SIZE}e{EPOCHS}f{N_FOLDS}"
 try:
     MODEL_SLUG = f"{model_config.MODEL_NAME.split("/")[1]}-{MODEL_SLUG}"
 except IndexError:
     MODEL_SLUG = f"{model_config.MODEL_NAME}-{MODEL_SLUG}"
 
-OUTPUT_FOLDER = "rsna24-data"
-model_config.MODEL_PATH = f'{OUTPUT_FOLDER}/models_db/{MODEL_SLUG}'
+model_config.MODEL_PATH = f'{OUTPUT_FOLDER}/models/{MODEL_SLUG}'
 os.makedirs(model_config.MODEL_PATH, exist_ok=True)
 
 
@@ -123,6 +125,7 @@ scaler = torch.cuda.amp.GradScaler(enabled=USE_AMP, init_scale=4096)
 def train(df, df_balanced, plane, n_classes):
     skf = KFold(n_splits=N_FOLDS, shuffle=True, random_state=SEED)
     model_config.N_LABELS = int(n_classes / 3)
+    model_config.N_CLASSES = n_classes
     fold_score = []
     study_ids = np.array(df.study_id.unique())
 
