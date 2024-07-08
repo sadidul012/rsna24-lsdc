@@ -18,6 +18,8 @@ from torch.utils.data import Dataset
 import albumentations as A
 import pydicom
 
+from config import ModelConfig
+
 # TODO Submit trained models to check progress
 
 warnings.filterwarnings("ignore", category=SettingWithCopyWarning)
@@ -25,8 +27,12 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 
 rd = '/mnt/Cache/rsna-2024-lumbar-spine-degenerative-classification'
-OUTPUT_DIR = 'rsna24-data/models/xception41-c3p1b16e20f14'
-MODEL_NAME = "xception41"
+# OUTPUT_DIR = 'rsna24-data/models/xception41-c3p1b16e20f14'
+# MODEL_NAME = "xception41"
+
+sagittal_t2_model_config = ModelConfig("rsna24-data/models_db/xception41-DB-c3p1b16e2f14/axial_t2-best_wll_model_fold-0.json")
+sagittal_t1_model_config = ModelConfig("rsna24-data/models_db/xception41-DB-c3p1b16e2f14/sagittal_t1-best_wll_model_fold-0.json")
+axial_t2_model_config = ModelConfig("rsna24-data/models_db/xception41-DB-c3p1b16e2f14/sagittal_t2-best_wll_model_fold-0.json")
 
 N_WORKERS = math.floor(os.cpu_count()/2) + 1
 USE_AMP = True
@@ -235,9 +241,9 @@ class RSNA24Model(nn.Module):
         return y
 
 
-def get_model_output(data, path, n_classes, image_dir, model_name):
-    model = RSNA24Model(model_name, IN_CHANS, n_classes, pretrained=False)
-    model.load_state_dict(torch.load(path))
+def get_model_output(data, config: ModelConfig, image_dir):
+    model = RSNA24Model(config.MODEL_NAME, config.IN_CHANS, config.N_CLASSES, pretrained=False)
+    model.load_state_dict(torch.load(config.MODEL_PATH + "/" + config.MODEL_FILENAME))
     model.eval()
     model.half()
     model.to(device)
@@ -251,7 +257,7 @@ def get_model_output(data, path, n_classes, image_dir, model_name):
             for idx, x in enumerate(dl):
                 x = x.to(device).type(torch.float32)
                 with autocast:
-                    y = model(x).reshape(-1, int(n_classes/3), 3).softmax(2)
+                    y = model(x).reshape(-1, config.N_LABELS, 3).softmax(2)
                     y = y.cpu().numpy()
                     y_preds.append(y)
 
@@ -387,7 +393,7 @@ def instance_image_path(x, image_dir):
     ]
 
 
-def prepare_submission(dataset, image_dir, sagittal_model_t2, sagittal_model_t1, axial_model_t1, model_name, method="average"):
+def prepare_submission(dataset, image_dir, sagittal_model_t2, sagittal_model_t1, axial_model_t1, method="average"):
     # TODO utilize all data
     dataset = dataset.drop_duplicates(subset=["study_id", "series_description"])
     dataset = dataset.groupby("study_id").apply(lambda x: inject_series_description(x)).reset_index(drop=True)
@@ -397,25 +403,19 @@ def prepare_submission(dataset, image_dir, sagittal_model_t2, sagittal_model_t1,
     sagittal_t2 = get_model_output(
         dataset.loc[dataset.series_description == "Sagittal T2/STIR"],
         sagittal_model_t2,
-        15,
-        image_dir,
-        model_name
+        image_dir
     )
 
     sagittal_t1 = get_model_output(
         dataset.loc[dataset.series_description == "Sagittal T1"],
         sagittal_model_t1,
-        30,
-        image_dir,
-        model_name
+        image_dir
     )
 
     axial_t2 = get_model_output(
         dataset.loc[dataset.series_description == "Axial T2"],
         axial_model_t1,
-        6,
-        image_dir,
-        model_name
+        image_dir
     )
     if method == "activation":
         sub = activation_method(dataset, sagittal_t2, sagittal_t1, axial_t2)
@@ -430,10 +430,9 @@ if __name__ == '__main__':
     submission = prepare_submission(
         df,
         f"{rd}/test_images/",
-        OUTPUT_DIR + '/sagittal_t2-best_wll_model_fold-0.pt',
-        OUTPUT_DIR + '/sagittal_t1-best_wll_model_fold-0.pt',
-        OUTPUT_DIR + '/axial_t2-best_wll_model_fold-0.pt',
-        MODEL_NAME
+        sagittal_t2_model_config,
+        sagittal_t1_model_config,
+        axial_t2_model_config
     )
     print(submission.shape)
     submission.to_csv('submission.csv', index=False)

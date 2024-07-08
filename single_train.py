@@ -249,8 +249,8 @@ def train(df, df_balanced, plane, n_classes):
                         # print(f'epoch:{epoch}, best wll_metric updated from {best_wll:.6f} to {val_wll:.6f}')
                         best_wll = val_wll
                         name = f'{plane}-best_wll_model_fold-{fold}'
-                        model_config.MODEL_FILENAME = name
-                        torch.save(model.state_dict(), f"{model_config.MODEL_PATH}/{name}.pt")
+                        model_config.MODEL_FILENAME = f"{name}.pt"
+                        torch.save(model.state_dict(), f"{model_config.MODEL_PATH}/{model_config.MODEL_FILENAME}")
                         model_config.save(f"{model_config.MODEL_PATH}/{name}.json")
 
                     if device != 'cuda:0':
