@@ -235,7 +235,9 @@ if __name__ == '__main__':
         activation_model_config,
         sagittal_t2_model_config,
         sagittal_t1_model_config,
-        axial_t2_model_config
+        axial_t2_model_config,
+        "activation"
+        # "average"
     )
     print(submission.shape)
     submission.to_csv('submission.csv', index=False)

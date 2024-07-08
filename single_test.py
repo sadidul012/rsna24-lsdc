@@ -3,15 +3,22 @@ import pandas as pd
 from sklearn.model_selection import KFold
 from sklearn.metrics import accuracy_score, confusion_matrix, precision_score
 
+from config import ModelConfig
 from single_inference import prepare_submission
 from score import score
 from single_dataset import read_train_csv, DATA_PATH, process_train_csv
-from single_train import N_FOLDS, OUTPUT_DIR, MODEL_NAME, SEED
+from single_train import N_FOLDS, SEED
 
 
 # SEED = 42
-OUTPUT_DIR = "rsna24-data/models/densenet169-c3p1b16e20f14"
-MODEL_NAME = "densenet169"
+sagittal_t2_model_config = ModelConfig("rsna24-data/models_db/xception41-DB-c3p1b16e2f14/sagittal_t2-best_wll_model_fold-0.json")
+sagittal_t1_model_config = ModelConfig("rsna24-data/models_db/xception41-DB-c3p1b16e2f14/sagittal_t1-best_wll_model_fold-0.json")
+axial_t2_model_config = ModelConfig("rsna24-data/models_db/xception41-DB-c3p1b16e2f14/axial_t2-best_wll_model_fold-0.json")
+
+activation_model_config = ModelConfig("rsna24-data/models/rexnet_150.nav_in1k-A-c9p1b16e20f14/Activation-best_wll_model_fold-0.json")
+
+# RESULT_DIRECTORY = activation_model_config.MODEL_PATH
+RESULT_DIRECTORY = sagittal_t2_model_config.MODEL_PATH
 
 
 def calculate_accuracy(fold_sol, sub, condition):
@@ -29,7 +36,7 @@ def calculate_accuracy(fold_sol, sub, condition):
     )
 
 
-def test(df, solution, model_location):
+def test(df, solution):
     skf = KFold(n_splits=N_FOLDS, shuffle=True, random_state=SEED)
     train_desc = pd.read_csv(DATA_PATH / "train_series_descriptions.csv")
     # print(train_desc.groupby("study_id").count().to_string())
@@ -42,8 +49,9 @@ def test(df, solution, model_location):
         #     continue
         print(f"Test fold {fold}")
         print("train size", len(trn_idx), "test size", len(val_idx))
-        # val_study_id = [3008676218, 2780132468, 2492114990]
-        # val_study_id = [3008676218]
+        # val_study_id = [3008676218, 2780132468, 2492114990]  # less folder
+        # val_study_id = [3008676218]  # less folder
+        # val_study_id = [22191399]  # good
         val_study_id = study_ids[val_idx]
         # val_study_id = val_study_id[10:20]
 
@@ -56,14 +64,15 @@ def test(df, solution, model_location):
         sub = prepare_submission(
             fold_desc,
             DATA_PATH / f"train_images/",
-            model_location + f'/sagittal_t2-best_wll_model_fold-{fold}.pt',
-            model_location + f'/sagittal_t1-best_wll_model_fold-{fold}.pt',
-            model_location + f'/axial_t2-best_wll_model_fold-{fold}.pt',
-            MODEL_NAME,
-            method="activation"
+            activation_model_config,
+            sagittal_t2_model_config,
+            sagittal_t1_model_config,
+            axial_t2_model_config,
+            method="average"
+            # method="activation"
         )
         fold_sol = fold_sol[["row_id", "normal_mild", "moderate", "severe", "sample_weight"]]
-
+        print(sub.shape, fold_sol.shape)
         try:
             s = score(fold_sol.copy(), sub.copy(), "row_id", 1)
             print("fold score", s)
@@ -96,7 +105,7 @@ neural_foraminal ######
 {calculate_accuracy(fold_sol, sub, neural_foraminal)}
             """
             print(output)
-            with open(model_location + f"/result", "w") as file:
+            with open(RESULT_DIRECTORY + f"/result", "w") as file:
                 file.write(output)
             scores.append(s)
         except Exception as e:
@@ -120,8 +129,7 @@ def main():
 
     test(
         _train,
-        _solution,
-        OUTPUT_DIR
+        _solution
     )
 
 
