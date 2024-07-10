@@ -69,14 +69,14 @@ rd = '/mnt/Cache/rsna-2024-lumbar-spine-degenerative-classification'
 model_config = ModelConfig()
 model_config.IMG_SIZE = [512, 512]
 model_config.IN_CHANS = 3
-# model_config.MODEL_NAME = "xception41"
-model_config.MODEL_NAME = "xception41"
+model_config.MODEL_NAME = "densenet201"
 print("Model name:", model_config.MODEL_NAME)
 OUTPUT_FOLDER = "rsna24-data"
 
 DEBUG = False
 PRETRAINED = True
 RETRAIN = False
+
 device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
 USE_AMP = True  # can change True if using T4 or newer than Ampere
 N_WORKERS = 4

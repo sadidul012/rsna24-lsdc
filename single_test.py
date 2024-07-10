@@ -20,8 +20,8 @@ axial_t2_model_config = ModelConfig(model_config.MODEL_PATH + "/axial_t2-best_wl
 activation_model_config = ModelConfig("rsna24-data/models/rexnet_150.nav_in1k-A-c9p1b16e20f14/Activation-best_wll_model_fold-0.json")
 
 # RESULT_DIRECTORY = activation_model_config.MODEL_PATH
-# RESULT_DIRECTORY = sagittal_t2_model_config.MODEL_PATH
-RESULT_DIRECTORY = None
+# RESULT_DIRECTORY = None
+RESULT_DIRECTORY = sagittal_t2_model_config.MODEL_PATH
 METHOD = "average"
 # METHOD = "activation"
 
