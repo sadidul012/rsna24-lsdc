@@ -9,10 +9,12 @@ from score import score
 from single_dataset import read_train_csv, DATA_PATH, process_train_csv
 from single_train import N_FOLDS, SEED, model_config
 
-
-sagittal_t2_model_config = ModelConfig(model_config.MODEL_PATH + "/sagittal_t2-best_wll_model_fold-0.json")
-sagittal_t1_model_config = ModelConfig(model_config.MODEL_PATH + "/sagittal_t1-best_wll_model_fold-0.json")
-axial_t2_model_config = ModelConfig(model_config.MODEL_PATH + "/axial_t2-best_wll_model_fold-0.json")
+MODEL_PATH = model_config.MODEL_PATH
+# MODEL_PATH = "/home/sadid-dl/PycharmProjects/rsna24-lsdc/rsna24-data/models/tinynet_e.in1k-c3p1b16e20f14"
+# MODEL_PATH = "/home/sadid-dl/PycharmProjects/rsna24-lsdc/rsna24-data/models_db/densenet169-DB-c3p1b16e20f14"
+sagittal_t2_model_config = ModelConfig(MODEL_PATH + "/sagittal_t2-best_wll_model_fold-0.json")
+sagittal_t1_model_config = ModelConfig(MODEL_PATH + "/sagittal_t1-best_wll_model_fold-0.json")
+axial_t2_model_config = ModelConfig(MODEL_PATH + "/axial_t2-best_wll_model_fold-0.json")
 # sagittal_t2_model_config = ModelConfig("rsna24-data/models_db/xception41-DB-c3p1b16e2f14/sagittal_t2-best_wll_model_fold-0.json")
 # sagittal_t1_model_config = ModelConfig("rsna24-data/models_db/xception41-DB-c3p1b16e2f14/sagittal_t1-best_wll_model_fold-0.json")
 # axial_t2_model_config = ModelConfig("rsna24-data/models_db/xception41-DB-c3p1b16e2f14/axial_t2-best_wll_model_fold-0.json")
@@ -21,16 +23,20 @@ activation_model_config = ModelConfig("rsna24-data/models/rexnet_150.nav_in1k-A-
 
 # RESULT_DIRECTORY = activation_model_config.MODEL_PATH
 # RESULT_DIRECTORY = None
-RESULT_DIRECTORY = sagittal_t2_model_config.MODEL_PATH
+RESULT_DIRECTORY = MODEL_PATH
 METHOD = "average"
 # METHOD = "activation"
 
 
-def calculate_accuracy(fold_sol, sub, condition):
-    spinal_canal_tru = fold_sol.loc[condition]
-    spinal_canal_hat = sub.loc[condition]
-    y_hat = np.argmax(spinal_canal_hat[["normal_mild", "moderate", "severe"]].values, axis=1)
-    y_tru = np.argmax(spinal_canal_tru[["normal_mild", "moderate", "severe"]].values, axis=1)
+def calculate_accuracy(fold_sol, sub, condition=None):
+    y_hat = sub.copy()
+    y_tru = fold_sol.copy()
+    if condition is not None:
+        y_tru = fold_sol.loc[condition]
+        y_hat = sub.loc[condition]
+
+    y_hat = np.argmax(y_hat[["normal_mild", "moderate", "severe"]].values, axis=1)
+    y_tru = np.argmax(y_tru[["normal_mild", "moderate", "severe"]].values, axis=1)
     cm = confusion_matrix(y_tru, y_hat)
 
     return (
@@ -46,6 +52,7 @@ def get_sub(val_study_id):
     sub["study_id"] = sub.row_id.apply(lambda x: int(x.split("_")[0]))
     sub = sub.loc[sub.study_id.isin(val_study_id)].reset_index(drop=True)[["row_id", "normal_mild", "moderate", "severe"]]
     return sub
+
 
 
 def test(df, solution):
@@ -82,6 +89,8 @@ def test(df, solution):
             axial_t2_model_config,
             method=METHOD
         )
+        if RESULT_DIRECTORY is not None:
+            sub.to_csv(RESULT_DIRECTORY + '/submission.csv', index=False)
         # sub = get_sub(val_study_id)
         fold_sol = fold_sol[["row_id", "normal_mild", "moderate", "severe", "sample_weight"]]
         print(sub.shape, fold_sol.shape)
