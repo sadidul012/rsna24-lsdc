@@ -220,7 +220,7 @@ class RSNA24DatasetBase(Dataset):
             # [left, right] * [l1/l2, l2/l3, l3/l4, l4/l5, l5/s1] * [Normal/Mild, Moderate, Severe]
             label_size = 30
         if x.plane == "Axial T2":
-            # Neural Foraminal Narrowing
+            # Subarticular Stenosis
             # [left, right] * [Normal/Mild, Moderate, Severe]
             label_size = 6
 

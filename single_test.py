@@ -12,32 +12,36 @@ from single_train import N_FOLDS, SEED, model_config
 MODEL_PATH = model_config.MODEL_PATH
 # MODEL_PATH = "/home/sadid-dl/PycharmProjects/rsna24-lsdc/rsna24-data/models/tinynet_e.in1k-c3p1b16e20f14"
 # MODEL_PATH = "/home/sadid-dl/PycharmProjects/rsna24-lsdc/rsna24-data/models_db/densenet169-DB-c3p1b16e20f14"
-sagittal_t2_model_config = ModelConfig(MODEL_PATH + "/sagittal_t2-best_wll_model_fold-0.json")
-sagittal_t1_model_config = ModelConfig(MODEL_PATH + "/sagittal_t1-best_wll_model_fold-0.json")
-axial_t2_model_config = ModelConfig(MODEL_PATH + "/axial_t2-best_wll_model_fold-0.json")
-# sagittal_t2_model_config = ModelConfig("rsna24-data/models_db/xception41-DB-c3p1b16e2f14/sagittal_t2-best_wll_model_fold-0.json")
-# sagittal_t1_model_config = ModelConfig("rsna24-data/models_db/xception41-DB-c3p1b16e2f14/sagittal_t1-best_wll_model_fold-0.json")
-# axial_t2_model_config = ModelConfig("rsna24-data/models_db/xception41-DB-c3p1b16e2f14/axial_t2-best_wll_model_fold-0.json")
+# sagittal_t2_model_config = ModelConfig(MODEL_PATH + "/sagittal_t2-best_wll_model_fold-0.json")
+# sagittal_t1_model_config = ModelConfig(MODEL_PATH + "/sagittal_t1-best_wll_model_fold-0.json")
+# axial_t2_model_config = ModelConfig(MODEL_PATH + "/axial_t2-best_wll_model_fold-0.json")
+sagittal_t2_model_config = ModelConfig("/home/sadid-dl/PycharmProjects/rsna24-lsdc/rsna24-data/models/densenet161-c3p1b16e20f14/sagittal_t2-best_wll_model_fold-0.json")
+sagittal_t1_model_config = ModelConfig("/home/sadid-dl/PycharmProjects/rsna24-lsdc/rsna24-data/models_db/xception41-DB-c3p1b16e20f14/sagittal_t1-best_wll_model_fold-0.json")
+axial_t2_model_config = ModelConfig("/home/sadid-dl/PycharmProjects/rsna24-lsdc/rsna24-data/models_db/xception41-DB-c3p1b16e20f14/axial_t2-best_wll_model_fold-0.json")
 
-activation_model_config = ModelConfig("rsna24-data/models/rexnet_150.nav_in1k-A-c9p1b16e20f14/Activation-best_wll_model_fold-0.json")
+activation_model_config = ModelConfig("/home/sadid-dl/PycharmProjects/rsna24-lsdc/rsna24-data/models/rexnet_150.nav_in1k-A-c9p1b16e20f14/Activation-best_wll_model_fold-0.json")
 
 # RESULT_DIRECTORY = activation_model_config.MODEL_PATH
-# RESULT_DIRECTORY = None
-RESULT_DIRECTORY = MODEL_PATH
+RESULT_DIRECTORY = None
+# RESULT_DIRECTORY = MODEL_PATH
+print("result dir", RESULT_DIRECTORY)
 METHOD = "average"
 # METHOD = "activation"
 
 
-def calculate_accuracy(fold_sol, sub, condition=None):
-    y_hat = sub.copy()
-    y_tru = fold_sol.copy()
+def calculate_condition_metrics(fold_sol, sub, condition=None, return_cm=False):
+    y_hat = sub.copy().sort_values("row_id").reset_index(drop=True)
+    y_tru = fold_sol.copy().sort_values("row_id").reset_index(drop=True)
     if condition is not None:
-        y_tru = fold_sol.loc[condition]
-        y_hat = sub.loc[condition]
+        y_tru = fold_sol.loc[fold_sol.row_id.str.contains(condition)]
+        y_hat = sub.loc[sub.row_id.str.contains(condition)]
 
     y_hat = np.argmax(y_hat[["normal_mild", "moderate", "severe"]].values, axis=1)
     y_tru = np.argmax(y_tru[["normal_mild", "moderate", "severe"]].values, axis=1)
     cm = confusion_matrix(y_tru, y_hat)
+
+    if return_cm:
+        return accuracy_score(y_tru, y_hat), cm
 
     return (
         f"accuracy {accuracy_score(y_tru, y_hat)} \n"
@@ -53,6 +57,21 @@ def get_sub(val_study_id):
     sub = sub.loc[sub.study_id.isin(val_study_id)].reset_index(drop=True)[["row_id", "normal_mild", "moderate", "severe"]]
     return sub
 
+
+def calculate_scores(sub, fold_sol):
+    sub = sub.copy().sort_values("row_id").reset_index(drop=True)
+    fold_sol = fold_sol.copy().sort_values("row_id").reset_index(drop=True)
+
+    fold_sol = fold_sol[["row_id", "normal_mild", "moderate", "severe", "sample_weight"]]
+    s = score(fold_sol.copy(), sub.copy(), "row_id", 1)
+    y_hat = np.argmax(sub[["normal_mild", "moderate", "severe"]].values, axis=1)
+    y_tru = np.argmax(fold_sol[["normal_mild", "moderate", "severe"]].values, axis=1)
+
+    accuracy = accuracy_score(y_tru, y_hat)
+    precision = precision_score(y_tru, y_hat, average="weighted", sample_weight=fold_sol.sample_weight)
+    cm = confusion_matrix(y_tru, y_hat)
+
+    return accuracy, precision, cm, s
 
 
 def test(df, solution):
@@ -75,9 +94,6 @@ def test(df, solution):
         # val_study_id = val_study_id[10:20]
 
         fold_sol = solution.loc[solution.study_id.isin(val_study_id)].sort_values(by="row_id").reset_index(drop=True)
-        spinal_canal = fold_sol.row_id.str.contains("spinal_canal")
-        neural_foraminal = fold_sol.row_id.str.contains("neural_foraminal")
-        subarticular = fold_sol.row_id.str.contains("subarticular")
         # print(fold_sol.to_string())
         fold_desc = train_desc.loc[train_desc.study_id.isin(val_study_id)]
         sub = prepare_submission(
@@ -92,19 +108,10 @@ def test(df, solution):
         if RESULT_DIRECTORY is not None:
             sub.to_csv(RESULT_DIRECTORY + '/submission.csv', index=False)
         # sub = get_sub(val_study_id)
-        fold_sol = fold_sol[["row_id", "normal_mild", "moderate", "severe", "sample_weight"]]
-        print(sub.shape, fold_sol.shape)
         try:
-            s = score(fold_sol.copy(), sub.copy(), "row_id", 1)
+            accuracy, precision, cm, s = calculate_scores(sub, fold_sol)
             print("fold score", s)
-            # print(fold_sol.head().to_string())
-            # print(sub.head().to_string())
-            y_hat = np.argmax(sub[["normal_mild", "moderate", "severe"]].values, axis=1)
-            y_tru = np.argmax(fold_sol[["normal_mild", "moderate", "severe"]].values, axis=1)
 
-            accuracy = accuracy_score(y_tru, y_hat)
-            precision = precision_score(y_tru, y_hat, average="weighted", sample_weight=fold_sol.sample_weight)
-            cm = confusion_matrix(y_tru, y_hat)
             output = f"""
 ####################################
 Fold: {fold} Score: {s:.2f}
@@ -118,13 +125,13 @@ moderate correct vs wrong {cm[1][1] / (cm[0][1] + cm[2][1]):.3f}
 severe correct vs wrong {cm[2][2] / (cm[1][2] + cm[0][2]):.3f}
 
 spinal_canal ##########
-{calculate_accuracy(fold_sol, sub, spinal_canal)}
+{calculate_condition_metrics(fold_sol, sub, "spinal_canal")}
 
 subarticular ##########
-{calculate_accuracy(fold_sol, sub, subarticular)}
+{calculate_condition_metrics(fold_sol, sub, "subarticular")}
 
 neural_foraminal ######
-{calculate_accuracy(fold_sol, sub, neural_foraminal)}
+{calculate_condition_metrics(fold_sol, sub, "neural_foraminal")}
             """
             print(output)
             if RESULT_DIRECTORY is not None:

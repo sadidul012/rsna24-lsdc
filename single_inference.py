@@ -22,10 +22,14 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 
 rd = '/mnt/Cache/rsna-2024-lumbar-spine-degenerative-classification'
-sagittal_t2_model_config = ModelConfig("rsna24-data/models_db/xception41-DB-c3p1b16e20f14/axial_t2-best_wll_model_fold-0.json")
-sagittal_t1_model_config = ModelConfig("rsna24-data/models_db/xception41-DB-c3p1b16e20f14/sagittal_t1-best_wll_model_fold-0.json")
-axial_t2_model_config = ModelConfig("rsna24-data/models_db/xception41-DB-c3p1b16e20f14/sagittal_t2-best_wll_model_fold-0.json")
-activation_model_config = ModelConfig("rsna24-data/models/rexnet_150.nav_in1k-A-c9p1b16e20f14/Activation-best_wll_model_fold-0.json")
+
+db_models_path = "/home/sadid-dl/PycharmProjects/rsna24-lsdc/rsna24-data/models_db/{}/{}-best_wll_model_fold-0.json"
+models_path = "/home/sadid-dl/PycharmProjects/rsna24-lsdc/rsna24-data/models/{}/submission.csv"
+
+sagittal_t2_model_config = ModelConfig("/home/sadid-dl/PycharmProjects/rsna24-lsdc/rsna24-data/models_db/xception41-DB-c3p1b16e20f14/axial_t2-best_wll_model_fold-0.json")
+sagittal_t1_model_config = ModelConfig("/home/sadid-dl/PycharmProjects/rsna24-lsdc/rsna24-data/models_db/xception41-DB-c3p1b16e20f14/sagittal_t1-best_wll_model_fold-0.json")
+axial_t2_model_config = ModelConfig("/home/sadid-dl/PycharmProjects/rsna24-lsdc/rsna24-data/models_db/xception41-DB-c3p1b16e20f14/sagittal_t2-best_wll_model_fold-0.json")
+activation_model_config = ModelConfig("/home/sadid-dl/PycharmProjects/rsna24-lsdc/rsna24-data/models/rexnet_150.nav_in1k-A-c9p1b16e20f14/Activation-best_wll_model_fold-0.json")
 
 N_WORKERS = math.floor(os.cpu_count()/2) + 1
 USE_AMP = True
